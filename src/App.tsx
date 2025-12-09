@@ -1,4 +1,94 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import Markdown from "react-markdown";
+import { Switch } from "./components/ui/switch";
+
+function usePersistedState<T>(key: string, defaultValue: T): [T, (value: T) => void] {
+  const [state, setState] = useState<T>(() => {
+    const stored = localStorage.getItem(key);
+    return stored !== null ? JSON.parse(stored) : defaultValue;
+  });
+
+  const setPersistedState = useCallback((value: T) => {
+    setState(value);
+    localStorage.setItem(key, JSON.stringify(value));
+  }, [key]);
+
+  return [state, setPersistedState];
+}
+
+function CollapsibleContent({ content, markdown }: { content: string; markdown: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const [isOverflow, setIsOverflow] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = contentRef.current;
+    if (el) {
+      setIsOverflow(el.scrollHeight > 40);
+    }
+  }, [content, markdown]);
+
+  return (
+    <div className="relative">
+      <div
+        ref={contentRef}
+        className={`text-ink text-sm leading-relaxed ${
+          !expanded && isOverflow ? "max-h-10 overflow-hidden" : ""
+        }`}
+      >
+        {markdown ? (
+          <div className="prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2 prose-pre:my-2 prose-ul:my-1 prose-ol:my-1">
+            <Markdown>{content}</Markdown>
+          </div>
+        ) : (
+          <p className="whitespace-pre-wrap break-words">{content}</p>
+        )}
+      </div>
+      {isOverflow && (
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="mt-1 text-xs text-primary hover:text-primary/80"
+        >
+          {expanded ? "Collapse" : "Expand"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(async () => {
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+  }, [text]);
+
+  useEffect(() => {
+    if (copied) {
+      const timer = setTimeout(() => setCopied(false), 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [copied]);
+
+  return (
+    <button
+      onClick={handleCopy}
+      className="absolute top-3 right-3 p-1.5 rounded-md bg-card-alt/80 hover:bg-card-alt text-muted hover:text-ink transition-opacity opacity-0 group-hover:opacity-100"
+      title="Copy"
+    >
+      {copied ? (
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+        </svg>
+      ) : (
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+        </svg>
+      )}
+    </button>
+  );
+}
 import { invoke } from "@tauri-apps/api/core";
 
 interface Project {
@@ -220,6 +310,15 @@ function SessionList({
   );
 }
 
+function restoreSlashCommand(content: string): string {
+  // Pattern: <command-message>...</command-message>\n<command-name>/xxx</command-name>\n<command-args>...</command-args>
+  const pattern = /<command-message>[^<]*<\/command-message>\s*<command-name>(\/[^<]+)<\/command-name>\s*<command-args>([^<]*)<\/command-args>/g;
+  return content.replace(pattern, (_match, cmd, args) => {
+    const trimmedArgs = args.trim();
+    return trimmedArgs ? `${cmd} ${trimmedArgs}` : cmd;
+  });
+}
+
 function MessageView({
   projectId,
   sessionId,
@@ -233,12 +332,18 @@ function MessageView({
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
+  const [rawCommands, setRawCommands] = usePersistedState("lovcode:rawCommands", true);
+  const [markdownPreview, setMarkdownPreview] = usePersistedState("lovcode:markdownPreview", false);
 
   useEffect(() => {
     invoke<Message[]>("get_session_messages", { projectId, sessionId })
       .then(setMessages)
       .finally(() => setLoading(false));
   }, [projectId, sessionId]);
+
+  const processContent = (content: string) => {
+    return rawCommands ? restoreSlashCommand(content) : content;
+  };
 
   if (loading) {
     return (
@@ -251,35 +356,55 @@ function MessageView({
   return (
     <div className="px-6 py-8">
       <header className="mb-6">
-        <button
-          onClick={onBack}
-          className="text-muted hover:text-ink mb-2 flex items-center gap-1"
-        >
-          <span>&larr;</span> Back
-        </button>
+        <div className="flex items-center justify-between mb-2">
+          <button
+            onClick={onBack}
+            className="text-muted hover:text-ink flex items-center gap-1"
+          >
+            <span>&larr;</span> Back
+          </button>
+          <div className="flex items-center gap-4">
+            <label
+              className="flex items-center gap-2 text-sm text-muted cursor-pointer"
+              title="Restore slash commands to original input format (e.g. /ttt args)"
+            >
+              <Switch checked={rawCommands} onCheckedChange={setRawCommands} />
+              <span>Raw input</span>
+            </label>
+            <label
+              className="flex items-center gap-2 text-sm text-muted cursor-pointer"
+              title="Render message content as Markdown"
+            >
+              <Switch checked={markdownPreview} onCheckedChange={setMarkdownPreview} />
+              <span>Preview</span>
+            </label>
+          </div>
+        </div>
         <h1 className="font-serif text-xl font-semibold text-ink line-clamp-2">
           {summary || "Session"}
         </h1>
       </header>
 
       <div className="space-y-4">
-        {messages.map((msg) => (
-          <div
-            key={msg.uuid}
-            className={`rounded-xl p-4 ${
-              msg.role === "user"
-                ? "bg-card-alt ml-8"
-                : "bg-card mr-8 border border-border"
-            }`}
-          >
-            <p className="text-xs text-muted mb-2 uppercase tracking-wide">
-              {msg.role}
-            </p>
-            <p className="text-ink whitespace-pre-wrap break-words text-sm leading-relaxed">
-              {msg.content}
-            </p>
-          </div>
-        ))}
+        {messages.map((msg) => {
+          const displayContent = processContent(msg.content);
+          return (
+            <div
+              key={msg.uuid}
+              className={`group relative rounded-xl p-4 ${
+                msg.role === "user"
+                  ? "bg-card-alt"
+                  : "bg-card border border-border"
+              }`}
+            >
+              <CopyButton text={displayContent} />
+              <p className="text-xs text-muted mb-2 uppercase tracking-wide">
+                {msg.role}
+              </p>
+              <CollapsibleContent content={displayContent} markdown={markdownPreview} />
+            </div>
+          );
+        })}
       </div>
     </div>
   );
