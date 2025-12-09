@@ -443,7 +443,8 @@ function Sidebar({
     <aside className={`flex flex-col border-r border-border bg-card transition-all ${collapsed ? "w-14" : "w-52"}`}>
       <div className="flex items-center justify-between p-3 border-b border-border">
         {!collapsed && (
-          <button onClick={onHomeClick} className="font-serif text-lg font-semibold text-ink hover:text-primary">
+          <button onClick={onHomeClick} className="flex items-center gap-2 font-serif text-lg font-semibold text-ink hover:text-primary">
+            <img src="/lovcode.svg" alt="Lovcode" className="w-5 h-5" />
             Lovcode
           </button>
         )}
@@ -508,7 +509,7 @@ function Sidebar({
 
       {!collapsed && (
         <div className="p-3 border-t border-border">
-          <p className="text-xs text-muted">Claude Code Viewer</p>
+          <p className="text-xs text-muted">Lovcode v0.1.0</p>
         </div>
       )}
     </aside>
