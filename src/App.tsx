@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { PanelLeft } from "lucide-react";
 import Markdown from "react-markdown";
 import { Switch } from "./components/ui/switch";
 import { ContextFileItem, ConfigFileItem } from "./components/ContextFileItem";
@@ -260,16 +261,83 @@ function App() {
   };
 
   return (
-    <div className="flex h-screen bg-canvas">
-      <Sidebar
-        currentFeature={currentFeature}
-        collapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-        onHomeClick={() => setView({ type: "home" })}
-        onFeatureClick={handleFeatureClick}
-      />
+    <div className="h-screen bg-canvas flex">
+      {/* Sidebar with animation */}
+      <aside className={`flex flex-col border-r border-border bg-card transition-all duration-300 ease-in-out overflow-hidden ${sidebarCollapsed ? "w-0 border-r-0" : "w-52"}`}>
+        {/* Traffic light row */}
+        <div data-tauri-drag-region className="h-[52px] shrink-0 flex items-center justify-end px-3 border-b border-border min-w-52">
+          <button
+            onClick={() => setSidebarCollapsed(true)}
+            className="p-1.5 rounded-md text-muted hover:text-ink hover:bg-card-alt"
+            title="Collapse sidebar"
+          >
+            <PanelLeft className="w-4 h-4" />
+          </button>
+        </div>
 
-      <main className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-y-auto py-3 min-w-52">
+          {/* History Group */}
+          <div className="px-2 mb-2">
+            {FEATURES.filter(f => f.group === "history").map((feature) => (
+              <FeatureButton
+                key={feature.type}
+                feature={feature}
+                active={currentFeature === feature.type}
+                onClick={() => onFeatureClick(feature.type)}
+              />
+            ))}
+          </div>
+
+          {/* Config Group */}
+          <div className="px-2 py-2 border-t border-border">
+            <p className="text-xs text-muted uppercase tracking-wide px-3 py-2">Configuration</p>
+            {FEATURES.filter(f => f.group === "config").map((feature) => (
+              <FeatureButton
+                key={feature.type}
+                feature={feature}
+                active={currentFeature === feature.type}
+                onClick={() => onFeatureClick(feature.type)}
+              />
+            ))}
+          </div>
+
+          {/* Marketplace Group */}
+          <div className="px-2 py-2 border-t border-border">
+            {FEATURES.filter(f => f.group === "marketplace").map((feature) => (
+              <FeatureButton
+                key={feature.type}
+                feature={feature}
+                active={currentFeature === feature.type}
+                onClick={() => onFeatureClick(feature.type)}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="p-3 border-t border-border min-w-52">
+          <p className="text-xs text-muted">Lovcode v0.1.0</p>
+        </div>
+      </aside>
+
+      {/* Main area */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Top bar - always 52px height, button only visible when collapsed */}
+        <div
+          data-tauri-drag-region
+          className="h-[52px] shrink-0 flex items-center border-b border-border bg-card"
+        >
+          <div className={`pl-[92px] transition-opacity duration-300 ${sidebarCollapsed ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
+            <button
+              onClick={() => setSidebarCollapsed(false)}
+              className="p-1.5 rounded-md text-muted hover:text-ink hover:bg-card-alt"
+              title="Expand sidebar"
+            >
+              <PanelLeft className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        <main className="flex-1 overflow-auto">
         {view.type === "home" && (
           <Home onFeatureClick={handleFeatureClick} />
         )}
@@ -417,114 +485,23 @@ function App() {
         {view.type === "feature-todo" && (
           <FeatureTodo feature={view.feature} />
         )}
-      </main>
+        </main>
+      </div>
     </div>
   );
 }
 
 // ============================================================================
-// Sidebar Component
+// Sidebar Components
 // ============================================================================
-
-function Sidebar({
-  currentFeature,
-  collapsed,
-  onToggleCollapse,
-  onHomeClick,
-  onFeatureClick,
-}: {
-  currentFeature: FeatureType | null;
-  collapsed: boolean;
-  onToggleCollapse: () => void;
-  onHomeClick: () => void;
-  onFeatureClick: (feature: FeatureType) => void;
-}) {
-  return (
-    <aside className={`flex flex-col border-r border-border bg-card transition-all ${collapsed ? "w-14" : "w-52"}`}>
-      <div className="flex items-center justify-between p-3 border-b border-border">
-        {!collapsed && (
-          <button onClick={onHomeClick} className="flex items-center gap-2 font-serif text-lg font-semibold text-ink hover:text-primary">
-            <img src="/lovcode.svg" alt="Lovcode" className="w-5 h-5" />
-            Lovcode
-          </button>
-        )}
-        <button
-          onClick={onToggleCollapse}
-          className={`p-1.5 rounded-md text-muted hover:text-ink hover:bg-card-alt ${collapsed ? "mx-auto" : ""}`}
-          title={collapsed ? "Expand" : "Collapse"}
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            {collapsed ? (
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
-            ) : (
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-            )}
-          </svg>
-        </button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto py-3">
-        {/* History Group */}
-        <div className="px-2 mb-2">
-          {FEATURES.filter(f => f.group === "history").map((feature) => (
-            <FeatureButton
-              key={feature.type}
-              feature={feature}
-              active={currentFeature === feature.type}
-              collapsed={collapsed}
-              onClick={() => onFeatureClick(feature.type)}
-            />
-          ))}
-        </div>
-
-        {/* Config Group */}
-        <div className="px-2 py-2 border-t border-border">
-          {!collapsed && (
-            <p className="text-xs text-muted uppercase tracking-wide px-3 py-2">Configuration</p>
-          )}
-          {FEATURES.filter(f => f.group === "config").map((feature) => (
-            <FeatureButton
-              key={feature.type}
-              feature={feature}
-              active={currentFeature === feature.type}
-              collapsed={collapsed}
-              onClick={() => onFeatureClick(feature.type)}
-            />
-          ))}
-        </div>
-
-        {/* Marketplace Group */}
-        <div className="px-2 py-2 border-t border-border">
-          {FEATURES.filter(f => f.group === "marketplace").map((feature) => (
-            <FeatureButton
-              key={feature.type}
-              feature={feature}
-              active={currentFeature === feature.type}
-              collapsed={collapsed}
-              onClick={() => onFeatureClick(feature.type)}
-            />
-          ))}
-        </div>
-      </div>
-
-      {!collapsed && (
-        <div className="p-3 border-t border-border">
-          <p className="text-xs text-muted">Lovcode v0.1.0</p>
-        </div>
-      )}
-    </aside>
-  );
-}
 
 function FeatureButton({
   feature,
   active,
-  collapsed,
   onClick,
 }: {
   feature: FeatureConfig;
   active: boolean;
-  collapsed: boolean;
   onClick: () => void;
 }) {
   return (
@@ -536,16 +513,13 @@ function FeatureButton({
           : feature.available
             ? "text-ink hover:bg-card-alt"
             : "text-muted/60 hover:bg-card-alt"
-      } ${collapsed ? "justify-center px-2" : ""}`}
-      title={collapsed ? feature.label : undefined}
+      }`}
     >
       <span className="text-lg">{feature.icon}</span>
-      {!collapsed && (
-        <span className="text-sm">
-          {feature.label}
-          {!feature.available && <span className="ml-1.5 text-xs opacity-60">(TODO)</span>}
-        </span>
-      )}
+      <span className="text-sm">
+        {feature.label}
+        {!feature.available && <span className="ml-1.5 text-xs opacity-60">(TODO)</span>}
+      </span>
     </button>
   );
 }
