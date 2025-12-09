@@ -59,12 +59,12 @@ const FEATURES: FeatureConfig[] = [
   // Projects
   { type: "chat", label: "Projects", icon: "💬", description: "Browse conversation history", available: true, group: "history" },
   // Configuration
-  { type: "settings", label: "Settings", icon: "⚙️", description: "Permissions, context & config", available: true, group: "config" },
+  { type: "settings", label: "Configuration", icon: "⚙️", description: "Permissions, context & config", available: true, group: "config" },
   { type: "commands", label: "Commands", icon: "⚡", description: "Slash commands", available: true, group: "config" },
   { type: "mcp", label: "MCPs", icon: "🔌", description: "MCP servers", available: true, group: "config" },
   { type: "skills", label: "Skills", icon: "🎯", description: "Reusable skill templates", available: true, group: "config" },
   { type: "hooks", label: "Hooks", icon: "🪝", description: "Automation triggers", available: true, group: "config" },
-  { type: "sub-agents", label: "Sub-Agents", icon: "🤖", description: "AI agents with models", available: true, group: "config" },
+  { type: "sub-agents", label: "Sub Agents", icon: "🤖", description: "AI agents with models", available: true, group: "config" },
   { type: "output-styles", label: "Output Styles", icon: "🎨", description: "Response formatting styles", available: true, group: "config" },
   // Marketplace
   { type: "marketplace", label: "Marketplace", icon: "🛒", description: "Browse and install templates", available: true, group: "marketplace" },
@@ -317,7 +317,7 @@ function App() {
 
           {/* Config Group */}
           <div className="px-2 py-2 border-t border-border">
-            <p className="text-xs text-muted uppercase tracking-wide px-3 py-2">Configuration</p>
+            <p className="text-xs text-muted uppercase tracking-wide px-3 py-2">Features</p>
             {FEATURES.filter(f => f.group === "config").map((feature) => (
               <FeatureButton
                 key={feature.type}
@@ -605,7 +605,7 @@ function Home({ onFeatureClick }: { onFeatureClick: (feature: FeatureType) => vo
 }
 
 // ============================================================================
-// Sub-Agents Feature
+// Sub Agents Feature
 // ============================================================================
 
 function SubAgentsView({
@@ -631,7 +631,7 @@ function SubAgentsView({
 
   return (
     <ConfigPage>
-      <PageHeader title="Sub-Agents" subtitle={`${agents.length} sub-agents in ~/.claude/commands`} />
+      <PageHeader title="Sub Agents" subtitle={`${agents.length} sub-agents in ~/.claude/commands`} />
       <SearchInput placeholder="Search local & marketplace..." value={search} onChange={setSearch} />
 
       {filtered.length > 0 && (
@@ -667,7 +667,7 @@ function SubAgentDetailView({ agent, onBack }: { agent: LocalAgent; onBack: () =
       <DetailHeader
         title={agent.name}
         description={agent.description}
-        backLabel="Sub-Agents"
+        backLabel="Sub Agents"
         onBack={onBack}
         path={agent.path}
         onOpenPath={(p) => invoke("open_in_editor", { path: p })}
@@ -1099,12 +1099,12 @@ function SettingsView({
 
 // Same order as sidebar Configuration group
 const TEMPLATE_CATEGORIES: { key: TemplateCategory; label: string; icon: string }[] = [
-  { key: "settings", label: "Settings", icon: "⚙️" },
+  { key: "settings", label: "Configuration", icon: "⚙️" },
   { key: "commands", label: "Commands", icon: "⚡" },
   { key: "mcps", label: "MCPs", icon: "🔌" },
   { key: "skills", label: "Skills", icon: "🎯" },
   { key: "hooks", label: "Hooks", icon: "🪝" },
-  { key: "agents", label: "Sub-Agents", icon: "🤖" },
+  { key: "agents", label: "Sub Agents", icon: "🤖" },
   { key: "output-styles", label: "Output Styles", icon: "🎨" },
 ];
 
