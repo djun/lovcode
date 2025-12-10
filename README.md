@@ -1,10 +1,16 @@
-# Lovcode
+<p align="center">
+  <img src="docs/assets/logo.svg" width="120" alt="Lovcode Logo">
+</p>
 
-A desktop companion app for AI coding tools. Browse Claude Code chat history, manage configurations, commands, skills, and more.
+<h1 align="center">Lovcode</h1>
 
-![Tauri](https://img.shields.io/badge/Tauri-2.0-blue)
-![React](https://img.shields.io/badge/React-19-blue)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue)
+<p align="center">A desktop companion app for AI coding tools. Browse Claude Code chat history, manage configurations, commands, skills, and more.</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Tauri-2.0-blue" alt="Tauri">
+  <img src="https://img.shields.io/badge/React-19-blue" alt="React">
+  <img src="https://img.shields.io/badge/TypeScript-5.8-blue" alt="TypeScript">
+</p>
 
 ![Gallery](docs/assets/gallery.png)
 
