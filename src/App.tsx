@@ -798,7 +798,7 @@ function Home({ onFeatureClick }: { onFeatureClick: (feature: FeatureType) => vo
   return (
     <div className="flex flex-col items-center justify-center min-h-full px-6 py-16">
       <h1 className="font-serif text-5xl font-bold text-primary mb-3 tracking-tight">Lovcode</h1>
-      <p className="text-muted text-lg mb-12">Your Vibe Coding Companion</p>
+      <p className="text-muted text-lg mb-12">Your Vibe Coding Hub</p>
 
       {stats && (
         <div className="flex gap-3 mb-12">
