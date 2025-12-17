@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
+import { useAtom } from "jotai";
+import { atomWithStorage } from "jotai/utils";
 import { version } from "../package.json";
 import { PanelLeft, User, ExternalLink, FolderOpen } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -2052,6 +2054,166 @@ function restoreSlashCommand(content: string): string {
   });
 }
 
+// ============================================================================
+// Export Dialog
+// ============================================================================
+
+type ExportFormat = "full" | "bullet" | "json";
+
+const exportFormatAtom = atomWithStorage<ExportFormat>("lovcode:exportFormat", "full");
+const exportTruncateAtom = atomWithStorage("lovcode:exportTruncate", false);
+const exportWatermarkAtom = atomWithStorage("lovcode:exportWatermark", true);
+const exportJsonPrettyAtom = atomWithStorage("lovcode:exportJsonPretty", true);
+
+interface ExportDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  messages: Message[];
+  processContent: (content: string) => string;
+  defaultName: string;
+}
+
+function ExportDialog({ open, onOpenChange, messages, processContent, defaultName }: ExportDialogProps) {
+  const [format, setFormat] = useAtom(exportFormatAtom);
+  const [truncateBullet, setTruncateBullet] = useAtom(exportTruncateAtom);
+  const [addWatermark, setAddWatermark] = useAtom(exportWatermarkAtom);
+  const [jsonPretty, setJsonPretty] = useAtom(exportJsonPrettyAtom);
+
+  const generateOutput = () => {
+    if (format === "json") {
+      const data = messages.map(m => ({
+        role: m.role,
+        content: processContent(m.content),
+      }));
+      return JSON.stringify(data, null, jsonPretty ? 2 : undefined);
+    }
+
+    let output: string;
+    if (format === "bullet") {
+      output = messages.map(m => {
+        const prefix = m.role === "user" ? "- **Q:**" : "- **A:**";
+        const full = processContent(m.content);
+        if (truncateBullet) {
+          const firstLine = full.split('\n')[0].slice(0, 200);
+          const isTruncated = full.includes('\n') || full.length > 200;
+          return `${prefix} ${firstLine}${isTruncated ? '...' : ''}`;
+        }
+        return `${prefix} ${full}`;
+      }).join("\n");
+    } else {
+      output = messages.map(m => {
+        const role = m.role.charAt(0).toUpperCase() + m.role.slice(1);
+        const content = processContent(m.content);
+        return `## ${role}\n\n${content}`;
+      }).join("\n\n---\n\n");
+    }
+    if (addWatermark) {
+      output += "\n\n---\n\n*Exported with [Lovcode](https://github.com/MarkShawn2020/lovcode) - A desktop companion app for AI coding tools*";
+    }
+    return output;
+  };
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(generateOutput());
+    onOpenChange(false);
+  };
+
+  const handleExport = async () => {
+    const ext = format === "json" ? "json" : "md";
+    const filterName = format === "json" ? "JSON" : "Markdown";
+    const path = await save({
+      defaultPath: `${defaultName}.${ext}`,
+      filters: [{ name: filterName, extensions: [ext] }]
+    });
+    if (path) {
+      await invoke('write_file', { path, content: generateOutput() });
+      onOpenChange(false);
+    }
+  };
+
+  const preview = generateOutput();
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle>Export {messages.length} Messages</DialogTitle>
+        </DialogHeader>
+
+        <div className="flex gap-4 items-center py-2 border-b border-border">
+          <div className="flex items-center gap-2">
+            <Label className="text-sm text-muted">Format</Label>
+            <select
+              value={format}
+              onChange={(e) => setFormat(e.target.value as ExportFormat)}
+              className="text-sm px-2 py-1 rounded bg-card-alt border border-border text-ink"
+            >
+              <option value="full">Full</option>
+              <option value="bullet">Bullet</option>
+              <option value="json">JSON</option>
+            </select>
+          </div>
+
+          {format === "bullet" && (
+            <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
+              <input
+                type="checkbox"
+                checked={truncateBullet}
+                onChange={(e) => setTruncateBullet(e.target.checked)}
+                className="w-4 h-4 accent-primary cursor-pointer"
+              />
+              <span>Truncate</span>
+            </label>
+          )}
+
+          {format === "json" && (
+            <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
+              <input
+                type="checkbox"
+                checked={jsonPretty}
+                onChange={(e) => setJsonPretty(e.target.checked)}
+                className="w-4 h-4 accent-primary cursor-pointer"
+              />
+              <span>Pretty</span>
+            </label>
+          )}
+
+          {format !== "json" && (
+            <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
+              <input
+                type="checkbox"
+                checked={addWatermark}
+                onChange={(e) => setAddWatermark(e.target.checked)}
+                className="w-4 h-4 accent-primary cursor-pointer"
+              />
+              <span>Watermark</span>
+            </label>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-auto min-h-0 mt-4">
+          <div className="text-xs text-muted mb-2">Preview</div>
+          <div className="bg-card-alt rounded-lg p-4 text-sm text-ink overflow-auto max-h-[300px] font-mono whitespace-pre-wrap">
+            {preview.slice(0, 2000)}{preview.length > 2000 && '...'}
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-4 border-t border-border">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button variant="outline" onClick={handleCopy}>
+            Copy
+          </Button>
+          <Button onClick={handleExport}>
+            Export
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function MessageView({
   projectId,
   sessionId,
@@ -2111,52 +2273,7 @@ function MessageView({
   };
 
   const exportCount = getExportMessages().length;
-  const [exportFormat, setExportFormat] = useState<"full" | "bullet">("full");
-  const [truncateBullet, setTruncateBullet] = useState(false);
-  const [addWatermark, setAddWatermark] = useState(true);
-
-  const generateOutput = () => {
-    const msgs = getExportMessages();
-    let output: string;
-    if (exportFormat === "bullet") {
-      output = msgs.map(m => {
-        const prefix = m.role === "user" ? "- **Q:**" : "- **A:**";
-        const full = processContent(m.content);
-        if (truncateBullet) {
-          const firstLine = full.split('\n')[0].slice(0, 200);
-          const isTruncated = full.includes('\n') || full.length > 200;
-          return `${prefix} ${firstLine}${isTruncated ? '...' : ''}`;
-        }
-        return `${prefix} ${full}`;
-      }).join("\n");
-    } else {
-      output = msgs.map(m => {
-        const role = m.role.charAt(0).toUpperCase() + m.role.slice(1);
-        const content = processContent(m.content);
-        return `## ${role}\n\n${content}`;
-      }).join("\n\n---\n\n");
-    }
-    if (addWatermark) {
-      output += "\n\n---\n\n*Exported with [Lovcode](https://github.com/MarkShawn2020/lovcode) - A desktop companion app for AI coding tools*";
-    }
-    return output;
-  };
-
-  const copySelected = async () => {
-    await navigator.clipboard.writeText(generateOutput());
-  };
-
-  const exportSelected = async () => {
-    const defaultName = summary?.slice(0, 50).replace(/[/\\?%*:|"<>]/g, '-') || 'session';
-    const ext = exportFormat === "bullet" ? "md" : "md";
-    const path = await save({
-      defaultPath: `${defaultName}.${ext}`,
-      filters: [{ name: 'Markdown', extensions: ['md'] }]
-    });
-    if (path) {
-      await invoke('write_file', { path, content: generateOutput() });
-    }
-  };
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
 
   if (loading) {
     return (
@@ -2195,82 +2312,48 @@ function MessageView({
             </label>
           </div>
         </div>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <h1 className="font-serif text-xl font-semibold text-ink line-clamp-2">
-              {summary || "Session"}
-            </h1>
-            <button
-              onClick={() => invoke("reveal_session_file", { projectId, sessionId })}
-              className="text-muted hover:text-ink transition-colors"
-              title="Reveal in Finder"
-            >
-              <FolderOpen size={16} />
-            </button>
-          </div>
-          {selectMode && (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={selectAll}
-                className="text-xs px-2 py-1 rounded bg-card-alt hover:bg-border text-muted hover:text-ink transition-colors"
-              >
-                All
-              </button>
-              <button
-                onClick={selectUserOnly}
-                className="text-xs px-2 py-1 rounded bg-card-alt hover:bg-border text-muted hover:text-ink transition-colors"
-              >
-                User
-              </button>
-              <button
-                onClick={deselectAll}
-                className="text-xs px-2 py-1 rounded bg-card-alt hover:bg-border text-muted hover:text-ink transition-colors"
-              >
-                None
-              </button>
-              {selectedIds.size > 0 && (
-                <>
-                  <select
-                    value={exportFormat}
-                    onChange={(e) => setExportFormat(e.target.value as "full" | "bullet")}
-                    className="text-xs px-1 py-1 rounded bg-card-alt border border-border text-muted"
-                  >
-                    <option value="full">Full</option>
-                    <option value="bullet">Bullet</option>
-                  </select>
-                  {exportFormat === "bullet" && (
-                    <label className="flex items-center gap-1 text-xs text-muted cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={truncateBullet}
-                        onChange={(e) => setTruncateBullet(e.target.checked)}
-                        className="w-3 h-3 accent-primary cursor-pointer"
-                      />
-                      <span>Truncate</span>
-                    </label>
-                  )}
-                  <label className="flex items-center gap-1 text-xs text-muted cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={addWatermark}
-                      onChange={(e) => setAddWatermark(e.target.checked)}
-                      className="w-3 h-3 accent-primary cursor-pointer"
-                    />
-                    <span>Watermark</span>
-                  </label>
-                  <CopySelectedButton count={exportCount} onCopy={copySelected} />
-                  <button
-                    onClick={exportSelected}
-                    disabled={exportCount === 0}
-                    className="text-xs px-2 py-1 rounded bg-card-alt hover:bg-border text-muted hover:text-ink transition-colors disabled:opacity-50"
-                  >
-                    Export {exportCount}
-                  </button>
-                </>
-              )}
-            </div>
-          )}
+        <div className="flex items-center gap-2">
+          <h1 className="font-serif text-xl font-semibold text-ink line-clamp-2">
+            {summary || "Session"}
+          </h1>
+          <button
+            onClick={() => invoke("reveal_session_file", { projectId, sessionId })}
+            className="text-muted hover:text-ink transition-colors"
+            title="Reveal in Finder"
+          >
+            <FolderOpen size={16} />
+          </button>
         </div>
+        {selectMode && (
+          <div className="flex items-center gap-2 mt-3">
+            <button
+              onClick={selectAll}
+              className="text-xs px-2 py-1 rounded bg-card-alt hover:bg-border text-muted hover:text-ink transition-colors"
+            >
+              All
+            </button>
+            <button
+              onClick={selectUserOnly}
+              className="text-xs px-2 py-1 rounded bg-card-alt hover:bg-border text-muted hover:text-ink transition-colors"
+            >
+              User
+            </button>
+            <button
+              onClick={deselectAll}
+              className="text-xs px-2 py-1 rounded bg-card-alt hover:bg-border text-muted hover:text-ink transition-colors"
+            >
+              None
+            </button>
+            {selectedIds.size > 0 && (
+              <button
+                onClick={() => setExportDialogOpen(true)}
+                className="text-xs px-2 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+              >
+                Export {exportCount}
+              </button>
+            )}
+          </div>
+        )}
       </header>
 
       <div className="space-y-4">
@@ -2306,6 +2389,14 @@ function MessageView({
           );
         })}
       </div>
+
+      <ExportDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        messages={getExportMessages()}
+        processContent={processContent}
+        defaultName={summary?.slice(0, 50).replace(/[/\\?%*:|"<>]/g, '-') || 'session'}
+      />
     </div>
   );
 }
@@ -2384,31 +2475,6 @@ function CopyButton({ text }: { text: string }) {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
         </svg>
       )}
-    </button>
-  );
-}
-
-function CopySelectedButton({ count, onCopy }: { count: number; onCopy: () => Promise<void> }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    await onCopy();
-    setCopied(true);
-  };
-
-  useEffect(() => {
-    if (copied) {
-      const timer = setTimeout(() => setCopied(false), 1500);
-      return () => clearTimeout(timer);
-    }
-  }, [copied]);
-
-  return (
-    <button
-      onClick={handleCopy}
-      className="text-xs px-2 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-    >
-      {copied ? "Copied!" : `Copy ${count} selected`}
     </button>
   );
 }
