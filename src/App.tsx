@@ -116,6 +116,7 @@ interface Project {
 interface Session {
   id: string;
   project_id: string;
+  project_path: string | null;
   summary: string | null;
   message_count: number;
   last_modified: number;
@@ -128,6 +129,34 @@ interface Message {
   timestamp: string;
   is_meta: boolean;
   is_tool: boolean;
+}
+
+interface ChatMessage {
+  uuid: string;
+  role: string;
+  content: string;
+  timestamp: string;
+  project_id: string;
+  project_path: string;
+  session_id: string;
+  session_summary: string | null;
+}
+
+interface SearchResult {
+  uuid: string;
+  content: string;
+  role: string;
+  project_id: string;
+  project_path: string;
+  session_id: string;
+  session_summary: string | null;
+  timestamp: string;
+  score: number;
+}
+
+interface ChatsResponse {
+  items: ChatMessage[];
+  total: number;
 }
 
 interface LocalCommand {
@@ -475,10 +504,22 @@ function App() {
 
         {view.type === "chat-projects" && (
           <ProjectList
-            onSelect={(p) => setView({
+            onSelectProject={(p) => setView({
               type: "chat-sessions",
               projectId: p.id,
               projectPath: p.path
+            })}
+            onSelectSession={(s) => setView({
+              type: "chat-messages",
+              projectId: s.project_id,
+              sessionId: s.id,
+              summary: s.summary
+            })}
+            onSelectChat={(c) => setView({
+              type: "chat-messages",
+              projectId: c.project_id,
+              sessionId: c.session_id,
+              summary: c.session_summary
             })}
           />
         )}
@@ -1760,18 +1801,110 @@ function FeatureTodo({ feature }: { feature: FeatureType }) {
 // ============================================================================
 
 type SortKey = "recent" | "sessions" | "name";
+type ChatViewMode = "projects" | "sessions" | "chats";
 
-function ProjectList({ onSelect }: { onSelect: (p: Project) => void }) {
+function ProjectList({
+  onSelectProject,
+  onSelectSession,
+  onSelectChat,
+}: {
+  onSelectProject: (p: Project) => void;
+  onSelectSession: (s: Session) => void;
+  onSelectChat: (c: ChatMessage) => void;
+}) {
   const { formatPath } = useAppConfig();
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = usePersistedState<ChatViewMode>("lovcode:chatViewMode", "projects");
+  const [projects, setProjects] = useState<Project[] | null>(null);
+  const [allSessions, setAllSessions] = useState<Session[] | null>(null);
+  const [allChats, setAllChats] = useState<ChatMessage[] | null>(null);
+  const [loadingProjects, setLoadingProjects] = useState(false);
+  const [loadingSessions, setLoadingSessions] = useState(false);
+  const [loadingChats, setLoadingChats] = useState(false);
+  const [totalChats, setTotalChats] = useState(0);
   const [sortBy, setSortBy] = useState<SortKey>("recent");
+  const [hideEmptySessions, setHideEmptySessions] = usePersistedState("lovcode-hide-empty-sessions-all", false);
+  // Search state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [indexBuilding, setIndexBuilding] = useState(false);
+  const [indexStatus, setIndexStatus] = useState<string | null>(null);
 
+  // Lazy load projects only when needed
   useEffect(() => {
-    invoke<Project[]>("list_projects")
-      .then(setProjects)
-      .finally(() => setLoading(false));
-  }, []);
+    if (viewMode === "projects" && projects === null && !loadingProjects) {
+      setLoadingProjects(true);
+      invoke<Project[]>("list_projects")
+        .then(setProjects)
+        .finally(() => setLoadingProjects(false));
+    }
+  }, [viewMode, projects, loadingProjects]);
+
+  // Lazy load sessions only when needed
+  useEffect(() => {
+    if (viewMode === "sessions" && allSessions === null && !loadingSessions) {
+      setLoadingSessions(true);
+      invoke<Session[]>("list_all_sessions")
+        .then(setAllSessions)
+        .finally(() => setLoadingSessions(false));
+    }
+  }, [viewMode, allSessions, loadingSessions]);
+
+  // Lazy load chats only when needed
+  useEffect(() => {
+    if (viewMode === "chats" && allChats === null && !loadingChats) {
+      setLoadingChats(true);
+      invoke<ChatsResponse>("list_all_chats", { limit: 500 })
+        .then((res) => {
+          setAllChats(res.items);
+          setTotalChats(res.total);
+        })
+        .finally(() => setLoadingChats(false));
+    }
+  }, [viewMode, allChats, loadingChats]);
+
+  const loading = viewMode === "projects" ? loadingProjects : viewMode === "sessions" ? loadingSessions : loadingChats;
+
+  // Search functions
+  const handleBuildIndex = async () => {
+    setIndexBuilding(true);
+    setIndexStatus(null);
+    try {
+      const count = await invoke<number>("build_search_index");
+      setIndexStatus(`Index built: ${count} messages indexed`);
+    } catch (e) {
+      setIndexStatus(`Error: ${e}`);
+    } finally {
+      setIndexBuilding(false);
+    }
+  };
+
+  // Debounced search effect
+  useEffect(() => {
+    if (viewMode !== "chats") return;
+
+    if (!searchQuery.trim()) {
+      setSearchResults(null);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const results = await invoke<SearchResult[]>("search_chats", { query: searchQuery, limit: 50 });
+        setSearchResults(results);
+      } catch (e) {
+        if (String(e).includes("not built")) {
+          setIndexStatus("Search index not built. Click 'Build Index' to create it.");
+        }
+        setSearchResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, viewMode]);
 
   const formatRelativeTime = (ts: number) => {
     const now = Date.now() / 1000;
@@ -1783,7 +1916,7 @@ function ProjectList({ onSelect }: { onSelect: (p: Project) => void }) {
     return new Date(ts * 1000).toLocaleDateString();
   };
 
-  const sortedProjects = [...projects].sort((a, b) => {
+  const sortedProjects = [...(projects || [])].sort((a, b) => {
     switch (sortBy) {
       case "recent": return b.last_active - a.last_active;
       case "sessions": return b.session_count - a.session_count;
@@ -1791,10 +1924,20 @@ function ProjectList({ onSelect }: { onSelect: (p: Project) => void }) {
     }
   });
 
+  const filteredSessions = hideEmptySessions ? (allSessions || []).filter(s => s.message_count > 0) : (allSessions || []);
+
+  const sortedSessions = [...filteredSessions].sort((a, b) => {
+    switch (sortBy) {
+      case "recent": return b.last_modified - a.last_modified;
+      case "sessions": return b.message_count - a.message_count;
+      case "name": return (a.summary || "").localeCompare(b.summary || "");
+    }
+  });
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <p className="text-muted">Loading projects...</p>
+        <p className="text-muted">Loading {viewMode}...</p>
       </div>
     );
   }
@@ -1802,43 +1945,180 @@ function ProjectList({ onSelect }: { onSelect: (p: Project) => void }) {
   return (
     <div className="px-6 py-8">
       <header className="mb-6">
-        <h1 className="font-serif text-3xl font-semibold text-ink">Projects</h1>
-        <p className="text-muted mt-1">{projects.length} projects with Claude Code history</p>
+        <h1 className="font-serif text-3xl font-semibold text-ink">History</h1>
+        <p className="text-muted mt-1">
+          {viewMode === "projects"
+            ? `${(projects || []).length} projects with Claude Code history`
+            : viewMode === "sessions"
+              ? `${filteredSessions.length} sessions${hideEmptySessions ? ` (${(allSessions || []).length - filteredSessions.length} hidden)` : ""}`
+              : `${(allChats || []).length} / ${totalChats} messages`}
+        </p>
       </header>
 
-      <div className="flex gap-2 mb-6">
-        {([
-          ["recent", "Recent"],
-          ["sessions", "Sessions"],
-          ["name", "Name"],
-        ] as const).map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => setSortBy(key)}
-            className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
-              sortBy === key
-                ? "bg-primary text-primary-foreground"
-                : "bg-card-alt text-muted hover:text-ink"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
+      {/* View Mode Tabs */}
+      <div className="flex border-b border-border mb-4">
+        <button
+          onClick={() => setViewMode("projects")}
+          className={`px-4 py-2 text-sm font-medium transition-colors ${
+            viewMode === "projects"
+              ? "text-primary border-b-2 border-primary -mb-px"
+              : "text-muted hover:text-ink"
+          }`}
+        >
+          📁 Projects
+        </button>
+        <button
+          onClick={() => setViewMode("sessions")}
+          className={`px-4 py-2 text-sm font-medium transition-colors ${
+            viewMode === "sessions"
+              ? "text-primary border-b-2 border-primary -mb-px"
+              : "text-muted hover:text-ink"
+          }`}
+        >
+          💬 Sessions
+        </button>
+        <button
+          onClick={() => setViewMode("chats")}
+          className={`px-4 py-2 text-sm font-medium transition-colors ${
+            viewMode === "chats"
+              ? "text-primary border-b-2 border-primary -mb-px"
+              : "text-muted hover:text-ink"
+          }`}
+        >
+          🗨️ Chats
+        </button>
       </div>
 
-      <div className="space-y-3">
-        {sortedProjects.map((project) => (
-          <button
-            key={project.id}
-            onClick={() => onSelect(project)}
-            className="w-full text-left bg-card rounded-xl p-4 border border-border hover:border-primary transition-colors"
-          >
-            <p className="font-medium text-ink truncate">{formatPath(project.path)}</p>
-            <p className="text-sm text-muted mt-1">
-              {project.session_count} session{project.session_count !== 1 ? "s" : ""} · {formatRelativeTime(project.last_active)}
+      {/* Sort & Filter Controls */}
+      {viewMode !== "chats" && (
+        <div className="flex items-center justify-between gap-2 mb-6">
+          <div className="flex gap-2">
+            {([
+              ["recent", "Recent"],
+              ["sessions", viewMode === "projects" ? "Sessions" : "Messages"],
+              ["name", "Name"],
+            ] as const).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setSortBy(key)}
+                className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                  sortBy === key
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-card-alt text-muted hover:text-ink"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {viewMode === "sessions" && (
+            <label className="flex items-center gap-2 text-xs text-muted cursor-pointer">
+              <Switch checked={hideEmptySessions} onCheckedChange={setHideEmptySessions} />
+              <span>Hide empty</span>
+            </label>
+          )}
+        </div>
+      )}
+
+      {/* Search Controls for Chats */}
+      {viewMode === "chats" && (
+        <div className="mb-6 space-y-3">
+          <div className="flex gap-2">
+            <div className="flex-1 relative">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search messages..."
+                className="w-full px-3 py-2 pr-8 rounded-lg bg-card border border-border text-ink placeholder:text-muted focus:outline-none focus:border-primary"
+              />
+              {searching && (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted text-sm">...</span>
+              )}
+            </div>
+            <button
+              onClick={handleBuildIndex}
+              disabled={indexBuilding}
+              className="px-3 py-2 rounded-lg bg-card-alt text-muted hover:text-ink border border-border transition-colors disabled:opacity-50"
+              title="Build search index"
+            >
+              {indexBuilding ? "Building..." : "🔄 Index"}
+            </button>
+          </div>
+          {indexStatus && (
+            <p className="text-xs text-muted">{indexStatus}</p>
+          )}
+          {searchQuery.trim() && searchResults !== null && (
+            <p className="text-xs text-muted">
+              {searchResults.length} result{searchResults.length !== 1 ? "s" : ""} found
             </p>
-          </button>
-        ))}
+          )}
+        </div>
+      )}
+
+      {/* Content List */}
+      <div className="space-y-3">
+        {viewMode === "projects" ? (
+          sortedProjects.map((project) => (
+            <button
+              key={project.id}
+              onClick={() => onSelectProject(project)}
+              className="w-full text-left bg-card rounded-xl p-4 border border-border hover:border-primary transition-colors"
+            >
+              <p className="font-medium text-ink truncate">{formatPath(project.path)}</p>
+              <p className="text-sm text-muted mt-1">
+                {project.session_count} session{project.session_count !== 1 ? "s" : ""} · {formatRelativeTime(project.last_active)}
+              </p>
+            </button>
+          ))
+        ) : viewMode === "sessions" ? (
+          sortedSessions.map((session) => (
+            <button
+              key={`${session.project_id}-${session.id}`}
+              onClick={() => onSelectSession(session)}
+              className="w-full text-left bg-card rounded-xl p-4 border border-border hover:border-primary transition-colors"
+            >
+              <p className="font-medium text-ink line-clamp-2">
+                {session.summary || "Untitled session"}
+              </p>
+              <p className="text-sm text-muted mt-1 truncate">
+                {session.project_path ? formatPath(session.project_path) : session.project_id}
+              </p>
+              <p className="text-xs text-muted mt-1">
+                {session.message_count} messages · {formatRelativeTime(session.last_modified)}
+              </p>
+            </button>
+          ))
+        ) : (
+          // Show search results if available, otherwise show all chats
+          (searchResults !== null ? searchResults : (allChats || [])).map((chat) => (
+            <button
+              key={chat.uuid}
+              onClick={() => onSelectChat(chat)}
+              className="w-full text-left bg-card rounded-xl p-4 border border-border hover:border-primary transition-colors"
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <span className={`text-xs px-1.5 py-0.5 rounded ${
+                  chat.role === "user" ? "bg-primary/15 text-primary" : "bg-card-alt text-muted"
+                }`}>
+                  {chat.role}
+                </span>
+                <span className="text-xs text-muted">
+                  {chat.timestamp ? new Date(chat.timestamp).toLocaleString() : ""}
+                </span>
+                {"score" in chat && (
+                  <span className="text-xs text-muted">
+                    · score: {(chat as SearchResult).score.toFixed(2)}
+                  </span>
+                )}
+              </div>
+              <p className="text-ink line-clamp-2">{chat.content}</p>
+              <p className="text-xs text-muted mt-2 truncate">
+                {formatPath(chat.project_path)} · {chat.session_summary || "Untitled"}
+              </p>
+            </button>
+          ))
+        )}
       </div>
     </div>
   );

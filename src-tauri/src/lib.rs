@@ -3,7 +3,40 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Mutex;
 use tauri::{Emitter, Manager};
+use tantivy::collector::TopDocs;
+use tantivy::query::QueryParser;
+use tantivy::schema::{self, Value as TantivyValue, *};
+use tantivy::{doc, Index, IndexWriter, ReloadPolicy};
+
+// Global search index state
+static SEARCH_INDEX: Mutex<Option<SearchIndex>> = Mutex::new(None);
+
+struct SearchIndex {
+    index: Index,
+    schema: Schema,
+}
+
+fn get_index_dir() -> PathBuf {
+    dirs::data_local_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("lovcode")
+        .join("search-index")
+}
+
+fn create_schema() -> Schema {
+    let mut schema_builder = Schema::builder();
+    schema_builder.add_text_field("uuid", STRING | STORED);
+    schema_builder.add_text_field("content", TEXT | STORED);
+    schema_builder.add_text_field("role", STRING | STORED);
+    schema_builder.add_text_field("project_id", STRING | STORED);
+    schema_builder.add_text_field("project_path", STRING | STORED);
+    schema_builder.add_text_field("session_id", STRING | STORED);
+    schema_builder.add_text_field("session_summary", TEXT | STORED);
+    schema_builder.add_text_field("timestamp", STRING | STORED);
+    schema_builder.build()
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Project {
@@ -17,6 +50,7 @@ pub struct Project {
 pub struct Session {
     pub id: String,
     pub project_id: String,
+    pub project_path: Option<String>,
     pub summary: Option<String>,
     pub message_count: usize,
     pub last_modified: u64,
@@ -30,6 +64,24 @@ pub struct Message {
     pub timestamp: String,
     pub is_meta: bool,      // slash command 展开的内容
     pub is_tool: bool,      // tool_use 或 tool_result
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ChatMessage {
+    pub uuid: String,
+    pub role: String,
+    pub content: String,
+    pub timestamp: String,
+    pub project_id: String,
+    pub project_path: String,
+    pub session_id: String,
+    pub session_summary: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ChatsResponse {
+    pub items: Vec<ChatMessage>,
+    pub total: usize,
 }
 
 #[derive(Debug, Deserialize)]
@@ -245,6 +297,7 @@ fn list_sessions(project_id: String) -> Result<Vec<Session>, String> {
             sessions.push(Session {
                 id: session_id,
                 project_id: project_id.clone(),
+                project_path: None,
                 summary,
                 message_count,
                 last_modified,
@@ -254,6 +307,177 @@ fn list_sessions(project_id: String) -> Result<Vec<Session>, String> {
 
     sessions.sort_by(|a, b| b.last_modified.cmp(&a.last_modified));
     Ok(sessions)
+}
+
+#[tauri::command]
+fn list_all_sessions() -> Result<Vec<Session>, String> {
+    let projects_dir = get_claude_dir().join("projects");
+
+    if !projects_dir.exists() {
+        return Ok(vec![]);
+    }
+
+    let mut all_sessions = Vec::new();
+
+    for project_entry in fs::read_dir(&projects_dir).map_err(|e| e.to_string())? {
+        let project_entry = project_entry.map_err(|e| e.to_string())?;
+        let project_path = project_entry.path();
+
+        if !project_path.is_dir() {
+            continue;
+        }
+
+        let project_id = project_path.file_name().unwrap().to_string_lossy().to_string();
+        let display_path = decode_project_path(&project_id);
+
+        for entry in fs::read_dir(&project_path).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            let path = entry.path();
+            let name = path.file_name().unwrap().to_string_lossy().to_string();
+
+            if name.ends_with(".jsonl") && !name.starts_with("agent-") {
+                let session_id = name.trim_end_matches(".jsonl").to_string();
+                let content = fs::read_to_string(&path).unwrap_or_default();
+
+                let mut summary = None;
+                let mut message_count = 0;
+
+                for line in content.lines() {
+                    if let Ok(parsed) = serde_json::from_str::<RawLine>(line) {
+                        if parsed.line_type.as_deref() == Some("summary") {
+                            summary = parsed.summary;
+                        }
+                        if parsed.line_type.as_deref() == Some("user") ||
+                           parsed.line_type.as_deref() == Some("assistant") {
+                            message_count += 1;
+                        }
+                    }
+                }
+
+                let metadata = fs::metadata(&path).ok();
+                let last_modified = metadata
+                    .and_then(|m| m.modified().ok())
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+
+                all_sessions.push(Session {
+                    id: session_id,
+                    project_id: project_id.clone(),
+                    project_path: Some(display_path.clone()),
+                    summary,
+                    message_count,
+                    last_modified,
+                });
+            }
+        }
+    }
+
+    all_sessions.sort_by(|a, b| b.last_modified.cmp(&a.last_modified));
+    Ok(all_sessions)
+}
+
+#[tauri::command]
+fn list_all_chats(limit: Option<usize>) -> Result<ChatsResponse, String> {
+    let projects_dir = get_claude_dir().join("projects");
+    let max_messages = limit.unwrap_or(500);
+
+    if !projects_dir.exists() {
+        return Ok(ChatsResponse { items: vec![], total: 0 });
+    }
+
+    // Collect all session files with metadata
+    let mut session_files: Vec<(PathBuf, String, String, u64)> = Vec::new();
+
+    for project_entry in fs::read_dir(&projects_dir).map_err(|e| e.to_string())? {
+        let project_entry = project_entry.map_err(|e| e.to_string())?;
+        let project_path = project_entry.path();
+
+        if !project_path.is_dir() {
+            continue;
+        }
+
+        let project_id = project_path.file_name().unwrap().to_string_lossy().to_string();
+        let display_path = decode_project_path(&project_id);
+
+        for entry in fs::read_dir(&project_path).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            let path = entry.path();
+            let name = path.file_name().unwrap().to_string_lossy().to_string();
+
+            if name.ends_with(".jsonl") && !name.starts_with("agent-") {
+                let last_modified = entry.metadata()
+                    .ok()
+                    .and_then(|m| m.modified().ok())
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+
+                session_files.push((path, project_id.clone(), display_path.clone(), last_modified));
+            }
+        }
+    }
+
+    // Sort by last modified (newest first)
+    session_files.sort_by(|a, b| b.3.cmp(&a.3));
+
+    let mut all_chats: Vec<ChatMessage> = Vec::new();
+
+    // Process all sessions to get total count
+    for (path, project_id, project_path, _) in session_files {
+        let session_id = path.file_stem().unwrap().to_string_lossy().to_string();
+        let content = fs::read_to_string(&path).unwrap_or_default();
+
+        let mut session_summary: Option<String> = None;
+        let mut session_messages: Vec<ChatMessage> = Vec::new();
+
+        for line in content.lines() {
+            if let Ok(parsed) = serde_json::from_str::<RawLine>(line) {
+                let line_type = parsed.line_type.as_deref();
+
+                if line_type == Some("summary") {
+                    session_summary = parsed.summary;
+                }
+
+                if line_type == Some("user") || line_type == Some("assistant") {
+                    if let Some(msg) = &parsed.message {
+                        let role = msg.role.clone().unwrap_or_default();
+                        let (text_content, _is_tool) = extract_content_with_meta(&msg.content);
+                        let is_meta = parsed.is_meta.unwrap_or(false);
+
+                        // Skip meta messages and empty content
+                        if !is_meta && !text_content.is_empty() {
+                            session_messages.push(ChatMessage {
+                                uuid: parsed.uuid.unwrap_or_default(),
+                                role,
+                                content: text_content,
+                                timestamp: parsed.timestamp.unwrap_or_default(),
+                                project_id: project_id.clone(),
+                                project_path: project_path.clone(),
+                                session_id: session_id.clone(),
+                                session_summary: None, // Will be filled later
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // Update session_summary for all messages
+        for msg in &mut session_messages {
+            msg.session_summary = session_summary.clone();
+        }
+
+        all_chats.extend(session_messages);
+    }
+
+    // Sort all by timestamp (newest first)
+    all_chats.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+
+    let total = all_chats.len();
+    all_chats.truncate(max_messages);
+
+    Ok(ChatsResponse { items: all_chats, total })
 }
 
 #[tauri::command]
@@ -295,6 +519,199 @@ fn get_session_messages(project_id: String, session_id: String) -> Result<Vec<Me
     }
 
     Ok(messages)
+}
+
+// ============================================================================
+// Search Feature
+// ============================================================================
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SearchResult {
+    pub uuid: String,
+    pub content: String,
+    pub role: String,
+    pub project_id: String,
+    pub project_path: String,
+    pub session_id: String,
+    pub session_summary: Option<String>,
+    pub timestamp: String,
+    pub score: f32,
+}
+
+#[tauri::command]
+fn build_search_index() -> Result<usize, String> {
+    let index_dir = get_index_dir();
+
+    // Remove old index if exists
+    if index_dir.exists() {
+        fs::remove_dir_all(&index_dir).map_err(|e| e.to_string())?;
+    }
+    fs::create_dir_all(&index_dir).map_err(|e| e.to_string())?;
+
+    let schema = create_schema();
+    let index = Index::create_in_dir(&index_dir, schema.clone()).map_err(|e| e.to_string())?;
+
+    let mut index_writer: IndexWriter = index
+        .writer(50_000_000) // 50MB heap
+        .map_err(|e| e.to_string())?;
+
+    let uuid_field = schema.get_field("uuid").unwrap();
+    let content_field = schema.get_field("content").unwrap();
+    let role_field = schema.get_field("role").unwrap();
+    let project_id_field = schema.get_field("project_id").unwrap();
+    let project_path_field = schema.get_field("project_path").unwrap();
+    let session_id_field = schema.get_field("session_id").unwrap();
+    let session_summary_field = schema.get_field("session_summary").unwrap();
+    let timestamp_field = schema.get_field("timestamp").unwrap();
+
+    let projects_dir = get_claude_dir().join("projects");
+    let mut indexed_count = 0;
+
+    if !projects_dir.exists() {
+        return Ok(0);
+    }
+
+    for project_entry in fs::read_dir(&projects_dir).map_err(|e| e.to_string())? {
+        let project_entry = project_entry.map_err(|e| e.to_string())?;
+        let project_path_buf = project_entry.path();
+
+        if !project_path_buf.is_dir() {
+            continue;
+        }
+
+        let project_id = project_path_buf.file_name().unwrap().to_string_lossy().to_string();
+        let display_path = decode_project_path(&project_id);
+
+        for entry in fs::read_dir(&project_path_buf).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            let path = entry.path();
+            let name = path.file_name().unwrap().to_string_lossy().to_string();
+
+            if name.ends_with(".jsonl") && !name.starts_with("agent-") {
+                let session_id = name.trim_end_matches(".jsonl").to_string();
+                let file_content = fs::read_to_string(&path).unwrap_or_default();
+
+                let mut session_summary: Option<String> = None;
+
+                // First pass: get summary
+                for line in file_content.lines() {
+                    if let Ok(parsed) = serde_json::from_str::<RawLine>(line) {
+                        if parsed.line_type.as_deref() == Some("summary") {
+                            session_summary = parsed.summary;
+                            break;
+                        }
+                    }
+                }
+
+                // Second pass: index messages
+                for line in file_content.lines() {
+                    if let Ok(parsed) = serde_json::from_str::<RawLine>(line) {
+                        let line_type = parsed.line_type.as_deref();
+
+                        if line_type == Some("user") || line_type == Some("assistant") {
+                            if let Some(msg) = &parsed.message {
+                                let role = msg.role.clone().unwrap_or_default();
+                                let (text_content, _) = extract_content_with_meta(&msg.content);
+                                let is_meta = parsed.is_meta.unwrap_or(false);
+
+                                if !is_meta && !text_content.is_empty() {
+                                    index_writer.add_document(doc!(
+                                        uuid_field => parsed.uuid.clone().unwrap_or_default(),
+                                        content_field => text_content,
+                                        role_field => role,
+                                        project_id_field => project_id.clone(),
+                                        project_path_field => display_path.clone(),
+                                        session_id_field => session_id.clone(),
+                                        session_summary_field => session_summary.clone().unwrap_or_default(),
+                                        timestamp_field => parsed.timestamp.clone().unwrap_or_default(),
+                                    )).map_err(|e| e.to_string())?;
+
+                                    indexed_count += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    index_writer.commit().map_err(|e| e.to_string())?;
+
+    // Store index in global state
+    let mut guard = SEARCH_INDEX.lock().map_err(|e| e.to_string())?;
+    *guard = Some(SearchIndex { index, schema });
+
+    Ok(indexed_count)
+}
+
+#[tauri::command]
+fn search_chats(query: String, limit: Option<usize>) -> Result<Vec<SearchResult>, String> {
+    let max_results = limit.unwrap_or(50);
+
+    // Try to get index from global state or load from disk
+    let mut guard = SEARCH_INDEX.lock().map_err(|e| e.to_string())?;
+
+    if guard.is_none() {
+        let index_dir = get_index_dir();
+        if !index_dir.exists() {
+            return Err("Search index not built. Please build index first.".to_string());
+        }
+
+        let schema = create_schema();
+        let index = Index::open_in_dir(&index_dir).map_err(|e| e.to_string())?;
+        *guard = Some(SearchIndex { index, schema });
+    }
+
+    let search_index = guard.as_ref().unwrap();
+    let reader = search_index.index
+        .reader_builder()
+        .reload_policy(ReloadPolicy::OnCommitWithDelay)
+        .try_into()
+        .map_err(|e: tantivy::TantivyError| e.to_string())?;
+
+    let searcher = reader.searcher();
+
+    let content_field = search_index.schema.get_field("content").unwrap();
+    let session_summary_field = search_index.schema.get_field("session_summary").unwrap();
+
+    let query_parser = QueryParser::for_index(&search_index.index, vec![content_field, session_summary_field]);
+    let parsed_query = query_parser.parse_query(&query).map_err(|e| e.to_string())?;
+
+    let top_docs = searcher
+        .search(&parsed_query, &TopDocs::with_limit(max_results))
+        .map_err(|e| e.to_string())?;
+
+    let mut results = Vec::new();
+
+    for (score, doc_address) in top_docs {
+        let retrieved_doc: tantivy::TantivyDocument = searcher.doc(doc_address).map_err(|e| e.to_string())?;
+
+        let get_text = |field_name: &str| -> String {
+            let field = search_index.schema.get_field(field_name).unwrap();
+            retrieved_doc
+                .get_first(field)
+                .and_then(|v| TantivyValue::as_str(&v))
+                .unwrap_or("")
+                .to_string()
+        };
+
+        let summary = get_text("session_summary");
+
+        results.push(SearchResult {
+            uuid: get_text("uuid"),
+            content: get_text("content"),
+            role: get_text("role"),
+            project_id: get_text("project_id"),
+            project_path: get_text("project_path"),
+            session_id: get_text("session_id"),
+            session_summary: if summary.is_empty() { None } else { Some(summary) },
+            timestamp: get_text("timestamp"),
+            score,
+        });
+    }
+
+    Ok(results)
 }
 
 fn extract_content_with_meta(value: &Option<serde_json::Value>) -> (String, bool) {
@@ -1197,7 +1614,11 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             list_projects,
             list_sessions,
+            list_all_sessions,
+            list_all_chats,
             get_session_messages,
+            build_search_index,
+            search_chats,
             list_local_commands,
             list_local_agents,
             list_local_skills,
