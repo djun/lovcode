@@ -512,14 +512,22 @@ pub struct TemplatesCatalog {
     pub skills: Vec<TemplateComponent>,
 }
 
-fn get_templates_path() -> PathBuf {
-    let relative_path = "third-parties/claude-code-templates/docs/components.json";
+fn get_templates_path(app_handle: Option<&tauri::AppHandle>) -> PathBuf {
+    // In production: read from bundled resources
+    // Tauri maps "../" to "_up_/" in the resource bundle
+    if let Some(handle) = app_handle {
+        if let Ok(resource_path) = handle.path().resource_dir() {
+            let bundled = resource_path.join("_up_/third-parties/claude-code-templates/docs/components.json");
+            if bundled.exists() {
+                return bundled;
+            }
+        }
+    }
 
-    // Try multiple possible locations
+    // In development: read from project source
+    let relative_path = "third-parties/claude-code-templates/docs/components.json";
     let candidates = [
-        // From project root (when running pnpm tauri dev from root)
         std::env::current_dir().ok(),
-        // From src-tauri/ (go up one level)
         std::env::current_dir().ok().and_then(|p| p.parent().map(|p| p.to_path_buf())),
     ];
 
@@ -530,15 +538,14 @@ fn get_templates_path() -> PathBuf {
         }
     }
 
-    // Fallback: return the most likely path for error message
     std::env::current_dir()
         .unwrap_or_default()
         .join(relative_path)
 }
 
 #[tauri::command]
-fn get_templates_catalog() -> Result<TemplatesCatalog, String> {
-    let path = get_templates_path();
+fn get_templates_catalog(app_handle: tauri::AppHandle) -> Result<TemplatesCatalog, String> {
+    let path = get_templates_path(Some(&app_handle));
 
     if !path.exists() {
         return Err(format!("Templates catalog not found at {:?}", path));
