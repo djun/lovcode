@@ -2058,26 +2058,40 @@ function restoreSlashCommand(content: string): string {
 // Export Dialog
 // ============================================================================
 
-type ExportFormat = "full" | "bullet" | "json";
+type ExportFormat = "markdown" | "json";
+type MarkdownStyle = "full" | "bullet" | "qa";
 
-const exportFormatAtom = atomWithStorage<ExportFormat>("lovcode:exportFormat", "full");
+const exportFormatAtom = atomWithStorage<ExportFormat>("lovcode:exportFormat", "markdown");
+const exportMdStyleAtom = atomWithStorage<MarkdownStyle>("lovcode:exportMdStyle", "full");
 const exportTruncateAtom = atomWithStorage("lovcode:exportTruncate", false);
+const exportSeparatorAtom = atomWithStorage("lovcode:exportSeparator", true);
+const exportOriginalAtom = atomWithStorage("lovcode:exportOriginal", true);
 const exportWatermarkAtom = atomWithStorage("lovcode:exportWatermark", true);
 const exportJsonPrettyAtom = atomWithStorage("lovcode:exportJsonPretty", true);
 
 interface ExportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  messages: Message[];
-  processContent: (content: string) => string;
+  allMessages: Message[];
+  selectedIds: Set<string>;
   defaultName: string;
 }
 
-function ExportDialog({ open, onOpenChange, messages, processContent, defaultName }: ExportDialogProps) {
+function ExportDialog({ open, onOpenChange, allMessages, selectedIds, defaultName }: ExportDialogProps) {
   const [format, setFormat] = useAtom(exportFormatAtom);
+  const [mdStyle, setMdStyle] = useAtom(exportMdStyleAtom);
   const [truncateBullet, setTruncateBullet] = useAtom(exportTruncateAtom);
+  const [addSeparator, setAddSeparator] = useAtom(exportSeparatorAtom);
+  const [exportOriginal, setExportOriginal] = useAtom(exportOriginalAtom);
   const [addWatermark, setAddWatermark] = useAtom(exportWatermarkAtom);
   const [jsonPretty, setJsonPretty] = useAtom(exportJsonPrettyAtom);
+
+  // Filter and process messages based on original mode
+  const messages = exportOriginal
+    ? allMessages.filter(m => selectedIds.has(m.uuid) && !m.is_meta && !m.is_tool)
+    : allMessages.filter(m => selectedIds.has(m.uuid));
+  const processContent = (content: string) =>
+    exportOriginal ? restoreSlashCommand(content) : content;
 
   const generateOutput = () => {
     if (format === "json") {
@@ -2088,24 +2102,39 @@ function ExportDialog({ open, onOpenChange, messages, processContent, defaultNam
       return JSON.stringify(data, null, jsonPretty ? 2 : undefined);
     }
 
+    const truncate = (text: string) => {
+      if (!truncateBullet) return text;
+      const firstLine = text.split('\n')[0].slice(0, 200);
+      const isTruncated = text.includes('\n') || text.length > 200;
+      return `${firstLine}${isTruncated ? '...' : ''}`;
+    };
+
+    // Find indices of user messages for separator logic
+    const userIndices = messages.map((m, i) => m.role === "user" ? i : -1).filter(i => i >= 0);
+    const needsSeparator = (i: number) => addSeparator && userIndices.includes(i) && i !== userIndices[0];
+
     let output: string;
-    if (format === "bullet") {
-      output = messages.map(m => {
+    if (mdStyle === "bullet") {
+      output = messages.map((m, i) => {
         const prefix = m.role === "user" ? "- **Q:**" : "- **A:**";
-        const full = processContent(m.content);
-        if (truncateBullet) {
-          const firstLine = full.split('\n')[0].slice(0, 200);
-          const isTruncated = full.includes('\n') || full.length > 200;
-          return `${prefix} ${firstLine}${isTruncated ? '...' : ''}`;
-        }
-        return `${prefix} ${full}`;
+        const content = truncate(processContent(m.content));
+        const line = `${prefix} ${content}`;
+        return needsSeparator(i) ? `\n---\n\n${line}` : line;
       }).join("\n");
+    } else if (mdStyle === "qa") {
+      output = messages.map((m, i) => {
+        const prefix = m.role === "user" ? "**Q:**" : "**A:**";
+        const content = truncate(processContent(m.content));
+        const line = `${prefix} ${content}`;
+        return needsSeparator(i) ? `---\n\n${line}` : line;
+      }).join("\n\n");
     } else {
-      output = messages.map(m => {
+      output = messages.map((m, i) => {
         const role = m.role.charAt(0).toUpperCase() + m.role.slice(1);
-        const content = processContent(m.content);
-        return `## ${role}\n\n${content}`;
-      }).join("\n\n---\n\n");
+        const content = truncate(processContent(m.content));
+        const line = `## ${role}\n\n${content}`;
+        return needsSeparator(i) ? `---\n\n${line}` : line;
+      }).join("\n\n");
     }
     if (addWatermark) {
       output += "\n\n---\n\n*Exported with [Lovcode](https://github.com/MarkShawn2020/lovcode) - A desktop companion app for AI coding tools*";
@@ -2140,55 +2169,91 @@ function ExportDialog({ open, onOpenChange, messages, processContent, defaultNam
           <DialogTitle>Export {messages.length} Messages</DialogTitle>
         </DialogHeader>
 
-        <div className="flex gap-4 items-center py-2 border-b border-border">
-          <div className="flex items-center gap-2">
-            <Label className="text-sm text-muted">Format</Label>
-            <select
-              value={format}
-              onChange={(e) => setFormat(e.target.value as ExportFormat)}
-              className="text-sm px-2 py-1 rounded bg-card-alt border border-border text-ink"
-            >
-              <option value="full">Full</option>
-              <option value="bullet">Bullet</option>
-              <option value="json">JSON</option>
-            </select>
+        <div className="flex flex-col gap-2 py-2 border-b border-border">
+          <div className="flex gap-4 items-center">
+            <div className="flex items-center gap-2">
+              <Label className="text-sm text-muted">Format</Label>
+              <select
+                value={format}
+                onChange={(e) => setFormat(e.target.value as ExportFormat)}
+                className="text-sm px-2 py-1 rounded bg-card-alt border border-border text-ink"
+              >
+                <option value="markdown">Markdown</option>
+                <option value="json">JSON</option>
+              </select>
+            </div>
+
+            {format === "markdown" && (
+              <div className="flex items-center gap-2">
+                <Label className="text-sm text-muted">Style</Label>
+                <select
+                  value={mdStyle}
+                  onChange={(e) => setMdStyle(e.target.value as MarkdownStyle)}
+                  className="text-sm px-2 py-1 rounded bg-card-alt border border-border text-ink"
+                >
+                  <option value="full">Full</option>
+                  <option value="qa">QA</option>
+                  <option value="bullet">QA (list)</option>
+                </select>
+              </div>
+            )}
           </div>
 
-          {format === "bullet" && (
+          <div className="flex gap-4 items-center">
             <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
               <input
                 type="checkbox"
-                checked={truncateBullet}
-                onChange={(e) => setTruncateBullet(e.target.checked)}
+                checked={exportOriginal}
+                onChange={(e) => setExportOriginal(e.target.checked)}
                 className="w-4 h-4 accent-primary cursor-pointer"
               />
-              <span>Truncate</span>
+              <span>Original</span>
             </label>
-          )}
 
-          {format === "json" && (
-            <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
-              <input
-                type="checkbox"
-                checked={jsonPretty}
-                onChange={(e) => setJsonPretty(e.target.checked)}
-                className="w-4 h-4 accent-primary cursor-pointer"
-              />
-              <span>Pretty</span>
-            </label>
-          )}
+            {format === "markdown" && (
+              <>
+                <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={truncateBullet}
+                    onChange={(e) => setTruncateBullet(e.target.checked)}
+                    className="w-4 h-4 accent-primary cursor-pointer"
+                  />
+                  <span>Truncate</span>
+                </label>
+                <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={addSeparator}
+                    onChange={(e) => setAddSeparator(e.target.checked)}
+                    className="w-4 h-4 accent-primary cursor-pointer"
+                  />
+                  <span>Separator</span>
+                </label>
+                <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={addWatermark}
+                    onChange={(e) => setAddWatermark(e.target.checked)}
+                    className="w-4 h-4 accent-primary cursor-pointer"
+                  />
+                  <span>Watermark</span>
+                </label>
+              </>
+            )}
 
-          {format !== "json" && (
-            <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
-              <input
-                type="checkbox"
-                checked={addWatermark}
-                onChange={(e) => setAddWatermark(e.target.checked)}
-                className="w-4 h-4 accent-primary cursor-pointer"
-              />
-              <span>Watermark</span>
-            </label>
-          )}
+            {format === "json" && (
+              <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={jsonPretty}
+                  onChange={(e) => setJsonPretty(e.target.checked)}
+                  className="w-4 h-4 accent-primary cursor-pointer"
+                />
+                <span>Pretty</span>
+              </label>
+            )}
+          </div>
         </div>
 
         <div className="flex-1 flex flex-col min-h-[200px] overflow-hidden mt-4">
@@ -2269,22 +2334,20 @@ function MessageView({
   };
 
   const selectAll = () => {
+    setSelectMode(true);
     setSelectPreset("all");
   };
 
   const selectUserOnly = () => {
+    setSelectMode(true);
     setSelectPreset("user");
   };
 
   const deselectAll = () => {
+    setSelectMode(false);
     setSelectPreset("none");
   };
 
-  const getExportMessages = () => {
-    return filteredMessages.filter(m => selectedIds.has(m.uuid));
-  };
-
-  const exportCount = getExportMessages().length;
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
 
   if (loading) {
@@ -2342,49 +2405,37 @@ function MessageView({
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <span className={groupLabel}>Filter</span>
+            <span className={groupLabel}>Select</span>
             <div className="flex items-center gap-1">
               <button
-                onClick={() => { setSelectMode(!selectMode); if (selectMode) deselectAll(); }}
-                className={`${pillBase} ${selectMode ? pillActive : pillInactive}`}
+                onClick={selectAll}
+                className={`${pillBase} ${selectPreset === "all" ? pillActive : pillInactive}`}
               >
-                Select
+                All
               </button>
-              {selectMode && (
-                <>
-                  <span className="w-px h-3 bg-border mx-1" />
-                  <button
-                    onClick={selectAll}
-                    className={`${pillBase} ${selectPreset === "all" ? pillActive : pillInactive}`}
-                  >
-                    All
-                  </button>
-                  <button
-                    onClick={selectUserOnly}
-                    className={`${pillBase} ${selectPreset === "user" ? pillActive : pillInactive}`}
-                  >
-                    User
-                  </button>
-                  <button
-                    onClick={deselectAll}
-                    className={`${pillBase} ${selectPreset === "none" ? pillActive : pillInactive}`}
-                  >
-                    None
-                  </button>
-                  {selectedIds.size > 0 && (
-                    <>
-                      <span className="w-px h-3 bg-border mx-1" />
-                      <button
-                        onClick={() => setExportDialogOpen(true)}
-                        className="px-3 py-1 text-xs rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-                      >
-                        Export {exportCount}
-                      </button>
-                    </>
-                  )}
-                </>
-              )}
+              <button
+                onClick={selectUserOnly}
+                className={`${pillBase} ${selectPreset === "user" ? pillActive : pillInactive}`}
+              >
+                User
+              </button>
+              <button
+                onClick={deselectAll}
+                className={`${pillBase} ${selectPreset === "none" ? pillActive : pillInactive}`}
+              >
+                None
+              </button>
             </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className={groupLabel}>Export</span>
+            <button
+              onClick={() => setExportDialogOpen(true)}
+              disabled={selectedIds.size === 0}
+              className="px-3 py-1 text-xs rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {selectedIds.size > 0 ? `${selectedIds.size} selected` : "Select messages first"}
+            </button>
           </div>
         </div>
       </header>
@@ -2426,8 +2477,8 @@ function MessageView({
       <ExportDialog
         open={exportDialogOpen}
         onOpenChange={setExportDialogOpen}
-        messages={getExportMessages()}
-        processContent={processContent}
+        allMessages={messages}
+        selectedIds={selectedIds}
         defaultName={summary?.slice(0, 50).replace(/[/\\?%*:|"<>]/g, '-') || 'session'}
       />
     </div>
