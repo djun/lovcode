@@ -974,6 +974,9 @@ function OutputStylesView() {
 // Commands Feature
 // ============================================================================
 
+type CommandSortKey = "usage" | "name";
+type SortDirection = "asc" | "desc";
+
 function CommandsView({
   onSelect,
   marketplaceItems,
@@ -984,32 +987,85 @@ function CommandsView({
   onMarketplaceSelect: (item: MarketplaceItem) => void;
 }) {
   const [commands, setCommands] = useState<LocalCommand[]>([]);
+  const [commandStats, setCommandStats] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
+  const [sortKey, setSortKey] = useState<CommandSortKey>("usage");
+  const [sortDir, setSortDir] = useState<SortDirection>("desc");
   const { search, setSearch, filtered } = useSearch(commands, ["name", "description"]);
 
   useEffect(() => {
-    invoke<LocalCommand[]>("list_local_commands")
-      .then(setCommands)
+    Promise.all([
+      invoke<LocalCommand[]>("list_local_commands"),
+      invoke<Record<string, number>>("get_command_stats")
+    ])
+      .then(([cmds, stats]) => {
+        setCommands(cmds);
+        setCommandStats(stats);
+      })
       .finally(() => setLoading(false));
   }, []);
+
+  // Sort filtered commands
+  const sorted = [...filtered].sort((a, b) => {
+    if (sortKey === "usage") {
+      const aCount = commandStats[a.name] || 0;
+      const bCount = commandStats[b.name] || 0;
+      return sortDir === "desc" ? bCount - aCount : aCount - bCount;
+    } else {
+      const cmp = a.name.localeCompare(b.name);
+      return sortDir === "desc" ? -cmp : cmp;
+    }
+  });
+
+  const toggleSort = (key: CommandSortKey) => {
+    if (sortKey === key) {
+      setSortDir(sortDir === "desc" ? "asc" : "desc");
+    } else {
+      setSortKey(key);
+      setSortDir(key === "usage" ? "desc" : "asc");
+    }
+  };
 
   if (loading) return <LoadingState message="Loading commands..." />;
 
   return (
     <ConfigPage>
       <PageHeader title="Commands" subtitle={`${commands.length} slash commands in ~/.claude/commands`} />
-      <SearchInput placeholder="Search local & marketplace..." value={search} onChange={setSearch} />
+      <div className="flex items-center gap-4 mb-6">
+        <SearchInput
+          placeholder="Search local & marketplace..."
+          value={search}
+          onChange={setSearch}
+          className="flex-1 max-w-md px-4 py-2 bg-card border border-border rounded-lg text-ink placeholder:text-muted focus:outline-none focus:border-primary"
+        />
+        <div className="flex items-center gap-1 text-xs shrink-0">
+          <span className="text-muted mr-1">Sort:</span>
+          <button
+            onClick={() => toggleSort("usage")}
+            className={`px-2 py-1 rounded ${sortKey === "usage" ? "bg-primary/20 text-primary" : "text-muted hover:text-ink"}`}
+          >
+            Usage {sortKey === "usage" && (sortDir === "desc" ? "↓" : "↑")}
+          </button>
+          <button
+            onClick={() => toggleSort("name")}
+            className={`px-2 py-1 rounded ${sortKey === "name" ? "bg-primary/20 text-primary" : "text-muted hover:text-ink"}`}
+          >
+            Name {sortKey === "name" && (sortDir === "desc" ? "↓" : "↑")}
+          </button>
+        </div>
+      </div>
 
       {/* Local results */}
-      {filtered.length > 0 && (
+      {sorted.length > 0 && (
         <div className="space-y-2">
-          {filtered.map((cmd) => (
+          {sorted.map((cmd) => (
             <ItemCard
               key={cmd.name}
               name={cmd.name}
               description={cmd.description}
               badge={cmd.argument_hint}
               badgeVariant="muted"
+              usageCount={commandStats[cmd.name]}
               onClick={() => onSelect(cmd)}
             />
           ))}

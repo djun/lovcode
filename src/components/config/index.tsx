@@ -37,10 +37,12 @@ export function SearchInput({
   placeholder,
   value,
   onChange,
+  className,
 }: {
   placeholder: string;
   value: string;
   onChange: (value: string) => void;
+  className?: string;
 }) {
   return (
     <input
@@ -48,7 +50,7 @@ export function SearchInput({
       placeholder={placeholder}
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="w-full max-w-md mb-6 px-4 py-2 bg-card border border-border rounded-lg text-ink placeholder:text-muted focus:outline-none focus:border-primary"
+      className={className ?? "w-full max-w-md mb-6 px-4 py-2 bg-card border border-border rounded-lg text-ink placeholder:text-muted focus:outline-none focus:border-primary"}
     />
   );
 }
@@ -121,12 +123,14 @@ export function ItemCard({
   description,
   badge,
   badgeVariant = "accent",
+  usageCount,
   onClick,
 }: {
   name: string;
   description?: string | null;
   badge?: string | null;
   badgeVariant?: "accent" | "muted";
+  usageCount?: number;
   onClick: () => void;
 }) {
   const badgeClass =
@@ -141,7 +145,14 @@ export function ItemCard({
     >
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
-          <p className="font-mono font-medium text-primary">{name}</p>
+          <div className="flex items-center gap-2">
+            <p className="font-mono font-medium text-primary">{name}</p>
+            {usageCount !== undefined && usageCount > 0 && (
+              <span className="text-xs text-muted" title={`Used ${usageCount} times`}>
+                ×{usageCount}
+              </span>
+            )}
+          </div>
           {description && (
             <p className="text-sm text-muted mt-1 line-clamp-2">{description}</p>
           )}

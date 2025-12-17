@@ -891,6 +891,64 @@ fn get_project_context(project_path: String) -> Result<Vec<ContextFile>, String>
 }
 
 // ============================================================================
+// Command Usage Stats Feature
+// ============================================================================
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CommandStats {
+    pub name: String,
+    pub count: usize,
+}
+
+#[tauri::command]
+fn get_command_stats() -> Result<HashMap<String, usize>, String> {
+    let projects_dir = get_claude_dir().join("projects");
+    let mut stats: HashMap<String, usize> = HashMap::new();
+
+    if !projects_dir.exists() {
+        return Ok(stats);
+    }
+
+    // Regex to extract command names from session content
+    let command_pattern = regex::Regex::new(r"<command-name>(/[^<]+)</command-name>")
+        .map_err(|e| e.to_string())?;
+
+    // Iterate all project directories
+    for project_entry in fs::read_dir(&projects_dir).map_err(|e| e.to_string())? {
+        let project_entry = project_entry.map_err(|e| e.to_string())?;
+        let project_path = project_entry.path();
+
+        if !project_path.is_dir() {
+            continue;
+        }
+
+        // Iterate all session files in project
+        for session_entry in fs::read_dir(&project_path).map_err(|e| e.to_string())? {
+            let session_entry = session_entry.map_err(|e| e.to_string())?;
+            let session_path = session_entry.path();
+            let name = session_path.file_name().unwrap().to_string_lossy().to_string();
+
+            // Skip non-session files
+            if !name.ends_with(".jsonl") || name.starts_with("agent-") {
+                continue;
+            }
+
+            // Read and parse session file
+            if let Ok(content) = fs::read_to_string(&session_path) {
+                for cap in command_pattern.captures_iter(&content) {
+                    if let Some(cmd_name) = cap.get(1) {
+                        let cmd = cmd_name.as_str().to_string();
+                        *stats.entry(cmd).or_insert(0) += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(stats)
+}
+
+// ============================================================================
 // Settings Feature
 // ============================================================================
 
@@ -1146,6 +1204,7 @@ pub fn run() {
             get_context_files,
             get_project_context,
             get_settings,
+            get_command_stats,
             get_templates_catalog,
             install_command_template,
             install_mcp_template,
