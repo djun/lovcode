@@ -227,8 +227,19 @@ interface UserProfile {
 }
 
 function App() {
-  const [view, setView] = useState<View>({ type: "home" });
+  const [view, setView] = useState<View>(() => {
+    const saved = localStorage.getItem("lovcode-view");
+    if (saved) {
+      try {
+        return JSON.parse(saved) as View;
+      } catch {
+        return { type: "home" };
+      }
+    }
+    return { type: "home" };
+  });
   const [sidebarCollapsed, setSidebarCollapsed] = usePersistedState("lovcode:sidebarCollapsed", false);
+  const [marketplaceCategory, setMarketplaceCategory] = usePersistedState<TemplateCategory>("lovcode:marketplaceCategory", "commands");
   const [catalog, setCatalog] = useState<TemplatesCatalog | null>(null);
   const [homeDir, setHomeDir] = useState("");
   const [shortenPaths, setShortenPaths] = usePersistedState("lovcode:shortenPaths", true);
@@ -240,6 +251,11 @@ function App() {
   useEffect(() => {
     invoke<string>("get_home_dir").then(setHomeDir).catch(() => {});
   }, []);
+
+  // Persist view to localStorage
+  useEffect(() => {
+    localStorage.setItem("lovcode-view", JSON.stringify(view));
+  }, [view]);
 
   // Listen for menu settings event
   useEffect(() => {
@@ -389,7 +405,7 @@ function App() {
         </div>
 
         <div className="p-3 border-t border-border min-w-52">
-          <p className="text-xs text-muted text-center">Lovcode v0.1.0</p>
+          <p className="text-xs text-muted text-center">Lovcode v0.1.2</p>
         </div>
       </aside>
 
@@ -578,8 +594,15 @@ function App() {
 
         {view.type === "marketplace" && (
           <MarketplaceView
-            initialCategory={view.category}
-            onSelectTemplate={(template, category) => setView({ type: "template-detail", template, category })}
+            initialCategory={view.category ?? marketplaceCategory}
+            onSelectTemplate={(template, category) => {
+              setMarketplaceCategory(category);
+              setView({ type: "template-detail", template, category });
+            }}
+            onCategoryChange={(category) => {
+              setMarketplaceCategory(category);
+              setView({ type: "marketplace", category });
+            }}
           />
         )}
 
@@ -587,7 +610,7 @@ function App() {
           <TemplateDetailView
             template={view.template}
             category={view.category}
-            onBack={() => setView({ type: "marketplace", category: view.category })}
+            onBack={() => setView({ type: "marketplace", category: marketplaceCategory })}
           />
         )}
 
@@ -1372,14 +1395,16 @@ const TEMPLATE_CATEGORIES: { key: TemplateCategory; label: string; icon: string 
 function MarketplaceView({
   initialCategory,
   onSelectTemplate,
+  onCategoryChange,
 }: {
   initialCategory?: TemplateCategory;
   onSelectTemplate: (template: TemplateComponent, category: TemplateCategory) => void;
+  onCategoryChange?: (category: TemplateCategory) => void;
 }) {
   const [catalog, setCatalog] = useState<TemplatesCatalog | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeCategory, setActiveCategory] = useState<TemplateCategory>(initialCategory || "commands");
+  const activeCategory = initialCategory || "commands";
   const [search, setSearch] = useState("");
 
   useEffect(() => {
@@ -1422,7 +1447,7 @@ function MarketplaceView({
           return (
             <button
               key={cat.key}
-              onClick={() => setActiveCategory(cat.key)}
+              onClick={() => onCategoryChange?.(cat.key)}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm whitespace-nowrap transition-colors ${
                 activeCategory === cat.key
                   ? "bg-primary text-primary-foreground"
