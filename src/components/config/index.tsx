@@ -307,10 +307,12 @@ export function MarketplaceSection({
   items,
   search,
   onSelect,
+  onBrowseMore,
 }: {
   items: MarketplaceItem[];
   search: string;
   onSelect: (item: MarketplaceItem) => void;
+  onBrowseMore?: () => void;
 }) {
   if (!search || items.length === 0) return null;
 
@@ -351,9 +353,18 @@ export function MarketplaceSection({
           </button>
         ))}
         {filtered.length > 5 && (
-          <p className="text-xs text-muted-foreground text-center py-2">
-            +{filtered.length - 5} more in Marketplace
-          </p>
+          onBrowseMore ? (
+            <button
+              onClick={onBrowseMore}
+              className="w-full text-xs text-primary hover:underline text-center py-2"
+            >
+              +{filtered.length - 5} more in Marketplace →
+            </button>
+          ) : (
+            <p className="text-xs text-muted-foreground text-center py-2">
+              +{filtered.length - 5} more in Marketplace
+            </p>
+          )
         )}
       </div>
     </div>

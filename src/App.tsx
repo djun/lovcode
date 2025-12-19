@@ -3,7 +3,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { version } from "../package.json";
-import { PanelLeft, User, ExternalLink, FolderOpen, ChevronDown, HelpCircle, Copy, Download, Check, MoreHorizontal, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
+import { PanelLeft, User, ExternalLink, FolderOpen, ChevronDown, HelpCircle, Copy, Download, Check, MoreHorizontal, RefreshCw, ChevronLeft, ChevronRight, Store } from "lucide-react";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent as CollapsibleBody } from "./components/ui/collapsible";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import Markdown from "react-markdown";
@@ -701,6 +701,7 @@ function App() {
               const template = catalog?.commands.find(c => c.path === item.path);
               if (template) navigate({ type: "template-detail", template, category: "commands" });
             }}
+            onBrowseMore={() => navigate({ type: "marketplace", category: "commands" })}
           />
         )}
 
@@ -718,6 +719,7 @@ function App() {
               const template = catalog?.mcps.find(c => c.path === item.path);
               if (template) navigate({ type: "template-detail", template, category: "mcps" });
             }}
+            onBrowseMore={() => navigate({ type: "marketplace", category: "mcps" })}
           />
         )}
 
@@ -729,6 +731,7 @@ function App() {
               const template = catalog?.skills.find(c => c.path === item.path);
               if (template) navigate({ type: "template-detail", template, category: "skills" });
             }}
+            onBrowseMore={() => navigate({ type: "marketplace", category: "skills" })}
           />
         )}
 
@@ -746,6 +749,7 @@ function App() {
               const template = catalog?.hooks.find(c => c.path === item.path);
               if (template) navigate({ type: "template-detail", template, category: "hooks" });
             }}
+            onBrowseMore={() => navigate({ type: "marketplace", category: "hooks" })}
           />
         )}
 
@@ -757,6 +761,7 @@ function App() {
               const template = catalog?.agents.find(c => c.path === item.path);
               if (template) navigate({ type: "template-detail", template, category: "agents" });
             }}
+            onBrowseMore={() => navigate({ type: "marketplace", category: "agents" })}
           />
         )}
 
@@ -843,6 +848,7 @@ function App() {
               const template = catalog?.settings.find(c => c.path === item.path);
               if (template) navigate({ type: "template-detail", template, category: "settings" });
             }}
+            onBrowseMore={() => navigate({ type: "marketplace", category: "settings" })}
           />
         )}
 
@@ -1127,6 +1133,24 @@ function Home({ onFeatureClick }: { onFeatureClick: (feature: FeatureType) => vo
 }
 
 // ============================================================================
+// Shared Components
+// ============================================================================
+
+function BrowseMarketplaceButton({ onClick }: { onClick?: () => void }) {
+  if (!onClick) return null;
+  return (
+    <button
+      onClick={onClick}
+      className="flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground hover:text-ink hover:bg-card-alt rounded-lg transition-colors"
+      title="Browse marketplace"
+    >
+      <Store className="w-4 h-4" />
+      <span>Marketplace</span>
+    </button>
+  );
+}
+
+// ============================================================================
 // Sub Agents Feature
 // ============================================================================
 
@@ -1134,10 +1158,12 @@ function SubAgentsView({
   onSelect,
   marketplaceItems,
   onMarketplaceSelect,
+  onBrowseMore,
 }: {
   onSelect: (agent: LocalAgent) => void;
   marketplaceItems: MarketplaceItem[];
   onMarketplaceSelect: (item: MarketplaceItem) => void;
+  onBrowseMore?: () => void;
 }) {
   const [agents, setAgents] = useState<LocalAgent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1153,7 +1179,7 @@ function SubAgentsView({
 
   return (
     <ConfigPage>
-      <PageHeader title="Sub Agents" subtitle={`${agents.length} sub-agents in ~/.claude/commands`} />
+      <PageHeader title="Sub Agents" subtitle={`${agents.length} sub-agents in ~/.claude/commands`} action={<BrowseMarketplaceButton onClick={onBrowseMore} />} />
       <SearchInput placeholder="Search local & marketplace..." value={search} onChange={setSearch} />
 
       {filtered.length > 0 && (
@@ -1178,7 +1204,7 @@ function SubAgentsView({
         <p className="text-muted-foreground text-sm">No local sub-agents match "{search}"</p>
       )}
 
-      <MarketplaceSection items={marketplaceItems} search={search} onSelect={onMarketplaceSelect} />
+      <MarketplaceSection items={marketplaceItems} search={search} onSelect={onMarketplaceSelect} onBrowseMore={onBrowseMore} />
     </ConfigPage>
   );
 }
@@ -1494,10 +1520,12 @@ function CommandsView({
   onSelect,
   marketplaceItems,
   onMarketplaceSelect,
+  onBrowseMore,
 }: {
   onSelect: (cmd: LocalCommand) => void;
   marketplaceItems: MarketplaceItem[];
   onMarketplaceSelect: (item: MarketplaceItem) => void;
+  onBrowseMore?: () => void;
 }) {
   const [commands, setCommands] = useState<LocalCommand[]>([]);
   const [commandStats, setCommandStats] = useState<Record<string, number>>({});
@@ -1543,7 +1571,7 @@ function CommandsView({
 
   return (
     <ConfigPage>
-      <PageHeader title="Commands" subtitle={`${commands.length} slash commands in ~/.claude/commands`} />
+      <PageHeader title="Commands" subtitle={`${commands.length} slash commands in ~/.claude/commands`} action={<BrowseMarketplaceButton onClick={onBrowseMore} />} />
       <div className="flex items-center gap-4 mb-6">
         <SearchInput
           placeholder="Search local & marketplace..."
@@ -1594,7 +1622,7 @@ function CommandsView({
       )}
 
       {/* Marketplace results */}
-      <MarketplaceSection items={marketplaceItems} search={search} onSelect={onMarketplaceSelect} />
+      <MarketplaceSection items={marketplaceItems} search={search} onSelect={onMarketplaceSelect} onBrowseMore={onBrowseMore} />
     </ConfigPage>
   );
 }
@@ -1634,9 +1662,11 @@ function CommandDetailView({ command, onBack }: { command: LocalCommand; onBack:
 function McpView({
   marketplaceItems,
   onMarketplaceSelect,
+  onBrowseMore,
 }: {
   marketplaceItems: MarketplaceItem[];
   onMarketplaceSelect: (item: MarketplaceItem) => void;
+  onBrowseMore?: () => void;
 }) {
   const { formatPath } = useAppConfig();
   const [servers, setServers] = useState<McpServer[]>([]);
@@ -1700,15 +1730,18 @@ function McpView({
         title="MCP Servers"
         subtitle={`${servers.length} configured servers`}
         action={
-          mcpConfigPath && (
-            <button
-              onClick={() => invoke("open_in_editor", { path: mcpConfigPath })}
-              className="flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground hover:text-ink hover:bg-card-alt rounded-lg transition-colors"
-              title={formatPath(mcpConfigPath)}
-            >
-              <span>Open .claude.json</span>
-            </button>
-          )
+          <div className="flex items-center gap-2">
+            <BrowseMarketplaceButton onClick={onBrowseMore} />
+            {mcpConfigPath && (
+              <button
+                onClick={() => invoke("open_in_editor", { path: mcpConfigPath })}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground hover:text-ink hover:bg-card-alt rounded-lg transition-colors"
+                title={formatPath(mcpConfigPath)}
+              >
+                <span>Open .claude.json</span>
+              </button>
+            )}
+          </div>
         }
       />
       <SearchInput placeholder="Search local & marketplace..." value={search} onChange={setSearch} />
@@ -1784,7 +1817,7 @@ function McpView({
         <p className="text-muted-foreground text-sm">No local MCP servers match "{search}"</p>
       )}
 
-      <MarketplaceSection items={marketplaceItems} search={search} onSelect={onMarketplaceSelect} />
+      <MarketplaceSection items={marketplaceItems} search={search} onSelect={onMarketplaceSelect} onBrowseMore={onBrowseMore} />
     </ConfigPage>
   );
 }
@@ -1797,10 +1830,12 @@ function SkillsView({
   onSelect,
   marketplaceItems,
   onMarketplaceSelect,
+  onBrowseMore,
 }: {
   onSelect: (skill: LocalSkill) => void;
   marketplaceItems: MarketplaceItem[];
   onMarketplaceSelect: (item: MarketplaceItem) => void;
+  onBrowseMore?: () => void;
 }) {
   const [skills, setSkills] = useState<LocalSkill[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1816,7 +1851,7 @@ function SkillsView({
 
   return (
     <ConfigPage>
-      <PageHeader title="Skills" subtitle={`${skills.length} skills in ~/.claude/skills`} />
+      <PageHeader title="Skills" subtitle={`${skills.length} skills in ~/.claude/skills`} action={<BrowseMarketplaceButton onClick={onBrowseMore} />} />
       <SearchInput placeholder="Search local & marketplace..." value={search} onChange={setSearch} />
 
       {filtered.length > 0 && (
@@ -1835,7 +1870,7 @@ function SkillsView({
         <p className="text-muted-foreground text-sm">No local skills match "{search}"</p>
       )}
 
-      <MarketplaceSection items={marketplaceItems} search={search} onSelect={onMarketplaceSelect} />
+      <MarketplaceSection items={marketplaceItems} search={search} onSelect={onMarketplaceSelect} onBrowseMore={onBrowseMore} />
     </ConfigPage>
   );
 }
@@ -1865,9 +1900,11 @@ function SkillDetailView({ skill, onBack }: { skill: LocalSkill; onBack: () => v
 function HooksView({
   marketplaceItems,
   onMarketplaceSelect,
+  onBrowseMore,
 }: {
   marketplaceItems: MarketplaceItem[];
   onMarketplaceSelect: (item: MarketplaceItem) => void;
+  onBrowseMore?: () => void;
 }) {
   const [settings, setSettings] = useState<ClaudeSettings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1889,7 +1926,7 @@ function HooksView({
 
   return (
     <ConfigPage>
-      <PageHeader title="Hooks" subtitle="Automation triggers in ~/.claude/settings.json" />
+      <PageHeader title="Hooks" subtitle="Automation triggers in ~/.claude/settings.json" action={<BrowseMarketplaceButton onClick={onBrowseMore} />} />
       <SearchInput placeholder="Search local & marketplace..." value={search} onChange={setSearch} />
 
       {filtered.length > 0 && (
@@ -1917,7 +1954,7 @@ function HooksView({
         <p className="text-muted-foreground text-sm">No local hooks match "{search}"</p>
       )}
 
-      <MarketplaceSection items={marketplaceItems} search={search} onSelect={onMarketplaceSelect} />
+      <MarketplaceSection items={marketplaceItems} search={search} onSelect={onMarketplaceSelect} onBrowseMore={onBrowseMore} />
     </ConfigPage>
   );
 }
@@ -1929,9 +1966,11 @@ function HooksView({
 function SettingsView({
   marketplaceItems,
   onMarketplaceSelect,
+  onBrowseMore,
 }: {
   marketplaceItems: MarketplaceItem[];
   onMarketplaceSelect: (item: MarketplaceItem) => void;
+  onBrowseMore?: () => void;
 }) {
   const [settings, setSettings] = useState<ClaudeSettings | null>(null);
   const [contextFiles, setContextFiles] = useState<ContextFile[]>([]);
@@ -1967,7 +2006,7 @@ function SettingsView({
 
   return (
     <ConfigPage>
-      <PageHeader title="Settings" subtitle="User configuration (~/.claude)" />
+      <PageHeader title="Settings" subtitle="User configuration (~/.claude)" action={<BrowseMarketplaceButton onClick={onBrowseMore} />} />
       <SearchInput placeholder="Search local & marketplace..." value={search} onChange={setSearch} />
 
       {!hasContent && !search && (
@@ -2012,7 +2051,7 @@ function SettingsView({
         <p className="text-muted-foreground text-sm">No local settings match "{search}"</p>
       )}
 
-      <MarketplaceSection items={marketplaceItems} search={search} onSelect={onMarketplaceSelect} />
+      <MarketplaceSection items={marketplaceItems} search={search} onSelect={onMarketplaceSelect} onBrowseMore={onBrowseMore} />
     </ConfigPage>
   );
 }
