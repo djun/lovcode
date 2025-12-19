@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.2
+
+### Patch Changes
+
+- fix(search): 修复中文搜索无法匹配的问题
+
+  - 实现 JiebaTokenizer 自定义分词器支持中文分词
+  - 为 content 和 session_summary 字段配置 jieba 分词器
+
 ## 0.6.1
 
 ### Patch Changes
