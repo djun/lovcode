@@ -834,13 +834,18 @@ export function DocumentReader({
         {/* Spacer */}
         <div className="flex-1" />
 
-        {/* Page indicator */}
-        <span className="text-xs text-muted-foreground">
-          {currentIndex + 1} / {documents.length}
+        {/* Source name - centered */}
+        <span className="text-sm text-foreground font-medium truncate max-w-[300px]">
+          {startCase(sourceName)}
         </span>
 
         {/* Spacer */}
         <div className="flex-1" />
+
+        {/* Page indicator - right aligned */}
+        <span className="text-xs text-muted-foreground">
+          {currentIndex + 1} / {documents.length}
+        </span>
 
         {/* Right panel toggle (when closed) */}
         {!rightPanelOpen && headings.length > 0 && (
