@@ -395,6 +395,18 @@ function App() {
     return () => { unlisten.then(fn => fn()); };
   }, []);
 
+  // Cmd+R to reload page
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "r") {
+        e.preventDefault();
+        window.location.reload();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   const formatPath = useCallback((path: string) => {
     if (shortenPaths && homeDir && path.startsWith(homeDir)) {
       return "~" + path.slice(homeDir.length);
