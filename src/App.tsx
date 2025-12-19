@@ -801,6 +801,7 @@ function App() {
             template={view.template}
             category={view.category}
             onBack={() => setView({ type: "marketplace", category: marketplaceCategory })}
+            onNavigateToInstalled={view.category === "mcps" ? () => setView({ type: "mcp" }) : undefined}
           />
         )}
 
@@ -2072,14 +2073,39 @@ function TemplateDetailView({
   template,
   category,
   onBack,
+  onNavigateToInstalled,
 }: {
   template: TemplateComponent;
   category: TemplateCategory;
   onBack: () => void;
+  onNavigateToInstalled?: () => void;
 }) {
   const [installing, setInstalling] = useState(false);
+  const [uninstalling, setUninstalling] = useState(false);
   const [installed, setInstalled] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (category === "mcps") {
+      invoke<boolean>("check_mcp_installed", { name: template.name }).then(setInstalled);
+    }
+  }, [category, template.name]);
+
+  const handleUninstall = async () => {
+    if (category !== "mcps") return;
+
+    setUninstalling(true);
+    setError(null);
+
+    try {
+      await invoke("uninstall_mcp_template", { name: template.name });
+      setInstalled(false);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setUninstalling(false);
+    }
+  };
 
   const handleInstall = async () => {
     if (!template.content) {
@@ -2144,19 +2170,39 @@ function TemplateDetailView({
               )}
             </div>
           </div>
-          <button
-            onClick={handleInstall}
-            disabled={installing || installed}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors shrink-0 ${
-              installed
-                ? "bg-green-500/20 text-green-600"
-                : installing
-                  ? "bg-card-alt text-muted-foreground"
-                  : "bg-primary text-primary-foreground hover:bg-primary/90"
-            }`}
-          >
-            {installed ? "✓ Installed" : installing ? "Installing..." : "Install"}
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {installed && onNavigateToInstalled && (
+              <button
+                onClick={onNavigateToInstalled}
+                className="px-4 py-2 rounded-lg font-medium transition-colors border border-border hover:bg-card-alt"
+              >
+                View
+              </button>
+            )}
+            {installed && category === "mcps" ? (
+              <button
+                onClick={handleUninstall}
+                disabled={uninstalling}
+                className="px-4 py-2 rounded-lg font-medium transition-colors bg-red-500/10 text-red-600 hover:bg-red-500/20"
+              >
+                {uninstalling ? "Uninstalling..." : "Uninstall"}
+              </button>
+            ) : (
+              <button
+                onClick={handleInstall}
+                disabled={installing || installed}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  installed
+                    ? "bg-green-500/20 text-green-600"
+                    : installing
+                      ? "bg-card-alt text-muted-foreground"
+                      : "bg-primary text-primary-foreground hover:bg-primary/90"
+                }`}
+              >
+                {installed ? "✓ Installed" : installing ? "Installing..." : "Install"}
+              </button>
+            )}
+          </div>
         </div>
         {error && (
           <div className="mt-4 p-3 bg-red-500/10 text-red-600 rounded-lg text-sm">{error}</div>

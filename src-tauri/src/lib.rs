@@ -1323,6 +1323,55 @@ fn install_mcp_template(name: String, config: String) -> Result<String, String> 
 }
 
 #[tauri::command]
+fn uninstall_mcp_template(name: String) -> Result<String, String> {
+    let claude_json_path = get_claude_json_path();
+
+    if !claude_json_path.exists() {
+        return Err("No MCP configuration found".to_string());
+    }
+
+    let content = fs::read_to_string(&claude_json_path).map_err(|e| e.to_string())?;
+    let mut claude_json: serde_json::Value =
+        serde_json::from_str(&content).map_err(|e| e.to_string())?;
+
+    if let Some(mcp_servers) = claude_json.get_mut("mcpServers").and_then(|v| v.as_object_mut()) {
+        if mcp_servers.remove(&name).is_none() {
+            return Err(format!("MCP '{}' not found", name));
+        }
+    } else {
+        return Err("No mcpServers found".to_string());
+    }
+
+    let output = serde_json::to_string_pretty(&claude_json).map_err(|e| e.to_string())?;
+    fs::write(&claude_json_path, output).map_err(|e| e.to_string())?;
+
+    Ok(format!("Uninstalled MCP: {}", name))
+}
+
+#[tauri::command]
+fn check_mcp_installed(name: String) -> bool {
+    let claude_json_path = get_claude_json_path();
+
+    if !claude_json_path.exists() {
+        return false;
+    }
+
+    let Ok(content) = fs::read_to_string(&claude_json_path) else {
+        return false;
+    };
+
+    let Ok(claude_json) = serde_json::from_str::<serde_json::Value>(&content) else {
+        return false;
+    };
+
+    claude_json
+        .get("mcpServers")
+        .and_then(|v| v.as_object())
+        .map(|servers| servers.contains_key(&name))
+        .unwrap_or(false)
+}
+
+#[tauri::command]
 fn install_hook_template(name: String, config: String) -> Result<String, String> {
     let settings_path = get_claude_dir().join("settings.json");
 
@@ -1925,6 +1974,8 @@ pub fn run() {
             get_templates_catalog,
             install_command_template,
             install_mcp_template,
+            uninstall_mcp_template,
+            check_mcp_installed,
             install_hook_template,
             install_setting_template,
             open_in_editor,
