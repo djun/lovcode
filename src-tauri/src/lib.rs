@@ -1013,6 +1013,69 @@ fn list_local_skills() -> Result<Vec<LocalSkill>, String> {
 }
 
 // ============================================================================
+// Knowledge Base (Distill Documents)
+// ============================================================================
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DistillDocument {
+    pub date: String,
+    pub file: String,
+    pub title: String,
+    pub tags: Vec<String>,
+    pub session: String,
+}
+
+fn get_distill_dir() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".lovstudio/docs/distill")
+}
+
+#[tauri::command]
+fn list_distill_documents() -> Result<Vec<DistillDocument>, String> {
+    let distill_dir = get_distill_dir();
+    let index_path = distill_dir.join("index.jsonl");
+
+    if !index_path.exists() {
+        return Ok(vec![]);
+    }
+
+    let content = fs::read_to_string(&index_path).map_err(|e| e.to_string())?;
+    let mut docs: Vec<DistillDocument> = content
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .collect();
+
+    // Sort by date descending (newest first)
+    docs.sort_by(|a, b| b.date.cmp(&a.date));
+    Ok(docs)
+}
+
+#[tauri::command]
+fn get_distill_document(file: String) -> Result<String, String> {
+    let distill_dir = get_distill_dir();
+    let doc_path = distill_dir.join(&file);
+
+    if !doc_path.exists() {
+        return Err(format!("Document not found: {}", file));
+    }
+
+    fs::read_to_string(&doc_path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_distill_command_file() -> Result<String, String> {
+    let cmd_path = get_claude_dir().join("commands/distill.md");
+
+    if !cmd_path.exists() {
+        return Err("distill.md command file not found".to_string());
+    }
+
+    fs::read_to_string(&cmd_path).map_err(|e| e.to_string())
+}
+
+// ============================================================================
 // Marketplace Feature
 // ============================================================================
 
@@ -1723,7 +1786,10 @@ pub fn run() {
             get_mcp_config_path,
             get_home_dir,
             write_file,
-            update_mcp_env
+            update_mcp_env,
+            list_distill_documents,
+            get_distill_document,
+            get_distill_command_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useRef, createContext, useContext } f
 import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { version } from "../package.json";
-import { PanelLeft, User, ExternalLink, FolderOpen } from "lucide-react";
+import { PanelLeft, User, ExternalLink, FolderOpen, ChevronDown, HelpCircle, Copy, Download, Check } from "lucide-react";
+import { Collapsible, CollapsibleTrigger, CollapsibleContent as CollapsibleBody } from "./components/ui/collapsible";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import Markdown from "react-markdown";
 import { Switch } from "./components/ui/switch";
@@ -73,7 +74,7 @@ export const useAppConfig = () => useContext(AppConfigContext);
 // Types & Config
 // ============================================================================
 
-type FeatureType = "chat" | "settings" | "commands" | "mcp" | "skills" | "hooks" | "sub-agents" | "output-styles" | "marketplace";
+type FeatureType = "chat" | "settings" | "commands" | "mcp" | "skills" | "hooks" | "sub-agents" | "output-styles" | "marketplace" | "kb-distill" | "kb-notes" | "kb-bookmarks";
 
 interface FeatureConfig {
   type: FeatureType;
@@ -81,7 +82,7 @@ interface FeatureConfig {
   icon: string;
   description: string;
   available: boolean;
-  group: "history" | "config" | "marketplace";
+  group: "history" | "config" | "marketplace" | "knowledge";
 }
 
 // Group 1: Projects (chat history)
@@ -90,6 +91,10 @@ interface FeatureConfig {
 const FEATURES: FeatureConfig[] = [
   // Projects
   { type: "chat", label: "Projects", icon: "💬", description: "Browse conversation history", available: true, group: "history" },
+  // Knowledge (collapsible submenu)
+  { type: "kb-distill", label: "Distill", icon: "💡", description: "Experience summaries", available: true, group: "knowledge" },
+  { type: "kb-notes", label: "Notes", icon: "📝", description: "Markdown notes", available: false, group: "knowledge" },
+  { type: "kb-bookmarks", label: "Bookmarks", icon: "🔖", description: "External links", available: false, group: "knowledge" },
   // Configuration
   { type: "settings", label: "Configuration", icon: "⚙️", description: "Permissions, context & config", available: true, group: "config" },
   { type: "commands", label: "Commands", icon: "⚡", description: "Slash commands", available: true, group: "config" },
@@ -184,6 +189,14 @@ interface LocalSkill {
   content: string;
 }
 
+interface DistillDocument {
+  date: string;
+  file: string;
+  title: string;
+  tags: string[];
+  session: string;
+}
+
 interface McpServer {
   name: string;
   description: string | null;
@@ -248,6 +261,10 @@ type View =
   | { type: "sub-agents" }
   | { type: "sub-agent-detail"; agent: LocalAgent }
   | { type: "output-styles" }
+  | { type: "kb-distill" }
+  | { type: "kb-distill-detail"; document: DistillDocument }
+  | { type: "kb-notes" }
+  | { type: "kb-bookmarks" }
   | { type: "marketplace"; category?: TemplateCategory }
   | { type: "template-detail"; template: TemplateComponent; category: TemplateCategory }
   | { type: "feature-todo"; feature: FeatureType };
@@ -329,11 +346,17 @@ function App() {
                   ? "sub-agents"
                   : view.type === "output-styles"
                     ? "output-styles"
-                    : view.type === "marketplace" || view.type === "template-detail"
-                      ? "marketplace"
-                      : view.type === "feature-todo"
-                        ? view.feature
-                        : null;
+                    : view.type === "kb-distill" || view.type === "kb-distill-detail"
+                      ? "kb-distill"
+                      : view.type === "kb-notes"
+                        ? "kb-notes"
+                        : view.type === "kb-bookmarks"
+                          ? "kb-bookmarks"
+                          : view.type === "marketplace" || view.type === "template-detail"
+                        ? "marketplace"
+                        : view.type === "feature-todo"
+                          ? view.feature
+                          : null;
 
   const handleFeatureClick = (feature: FeatureType) => {
     switch (feature) {
@@ -360,6 +383,15 @@ function App() {
         break;
       case "output-styles":
         setView({ type: "output-styles" });
+        break;
+      case "kb-distill":
+        setView({ type: "kb-distill" });
+        break;
+      case "kb-notes":
+        setView({ type: "kb-notes" });
+        break;
+      case "kb-bookmarks":
+        setView({ type: "kb-bookmarks" });
         break;
       case "marketplace":
         setView({ type: "marketplace" });
@@ -411,6 +443,31 @@ function App() {
                 onClick={() => handleFeatureClick(feature.type)}
               />
             ))}
+
+            {/* Knowledge Collapsible Menu */}
+            <Collapsible defaultOpen={currentFeature?.startsWith("kb-")}>
+              <CollapsibleTrigger className="w-full group">
+                <div className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
+                  currentFeature?.startsWith("kb-")
+                    ? "bg-primary/10 text-primary"
+                    : "text-ink hover:bg-card-alt"
+                }`}>
+                  <span className="text-lg">📚</span>
+                  <span className="text-sm flex-1">Knowledge</span>
+                  <ChevronDown className="w-4 h-4 transition-transform group-data-[state=open]:rotate-180" />
+                </div>
+              </CollapsibleTrigger>
+              <CollapsibleBody className="pl-4">
+                {FEATURES.filter(f => f.group === "knowledge").map((feature) => (
+                  <FeatureButton
+                    key={feature.type}
+                    feature={feature}
+                    active={currentFeature === feature.type}
+                    onClick={() => handleFeatureClick(feature.type)}
+                  />
+                ))}
+              </CollapsibleBody>
+            </Collapsible>
           </div>
 
           {/* Marketplace Group */}
@@ -627,6 +684,63 @@ function App() {
 
         {view.type === "output-styles" && (
           <OutputStylesView />
+        )}
+
+        {view.type === "kb-distill" && (
+          <DistillView
+            onSelect={(doc) => setView({ type: "kb-distill-detail", document: doc })}
+          />
+        )}
+
+        {view.type === "kb-distill-detail" && (
+          <DistillDetailView
+            document={view.document}
+            onBack={() => setView({ type: "kb-distill" })}
+          />
+        )}
+
+        {view.type === "kb-notes" && (
+          <ConfigPage>
+            <PageHeader title="Notes" subtitle="Markdown notes" />
+            <Collapsible>
+              <CollapsibleTrigger className="w-full group">
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-card-alt/50 text-sm text-muted hover:text-ink transition-colors">
+                  <span>📝</span>
+                  <span>About Notes</span>
+                  <ChevronDown className="w-3 h-3 ml-auto transition-transform group-data-[state=open]:rotate-180" />
+                </div>
+              </CollapsibleTrigger>
+              <CollapsibleBody>
+                <div className="mt-2 px-3 py-3 rounded-lg bg-card-alt/30 text-sm text-muted space-y-2">
+                  <p>Store and organize your markdown notes directly in Lovcode.</p>
+                  <p className="text-xs">Create personal notes, snippets, and references that complement your distilled knowledge.</p>
+                </div>
+              </CollapsibleBody>
+            </Collapsible>
+            <EmptyState icon="📝" message="Notes coming soon" hint="Support for markdown notes will be added" />
+          </ConfigPage>
+        )}
+
+        {view.type === "kb-bookmarks" && (
+          <ConfigPage>
+            <PageHeader title="Bookmarks" subtitle="External links & docs" />
+            <Collapsible>
+              <CollapsibleTrigger className="w-full group">
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-card-alt/50 text-sm text-muted hover:text-ink transition-colors">
+                  <span>🔖</span>
+                  <span>About Bookmarks</span>
+                  <ChevronDown className="w-3 h-3 ml-auto transition-transform group-data-[state=open]:rotate-180" />
+                </div>
+              </CollapsibleTrigger>
+              <CollapsibleBody>
+                <div className="mt-2 px-3 py-3 rounded-lg bg-card-alt/30 text-sm text-muted space-y-2">
+                  <p>Save links to external documentation, tutorials, and resources.</p>
+                  <p className="text-xs">Build a curated library of references for quick access during development.</p>
+                </div>
+              </CollapsibleBody>
+            </Collapsible>
+            <EmptyState icon="🔖" message="Bookmarks coming soon" hint="Save and organize external documentation links" />
+          </ConfigPage>
         )}
 
         {view.type === "settings" && (
@@ -993,6 +1107,204 @@ function SubAgentDetailView({ agent, onBack }: { agent: LocalAgent; onBack: () =
           </DetailCard>
         )}
         <ContentCard label="Content" content={agent.content} />
+      </div>
+    </ConfigPage>
+  );
+}
+
+// ============================================================================
+// Distill Feature (Knowledge Base)
+// ============================================================================
+
+function DistillHelpButton() {
+  const [open, setOpen] = useState(false);
+  const [commandContent, setCommandContent] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (open && !commandContent) {
+      invoke<string>("get_distill_command_file")
+        .then(setCommandContent)
+        .catch(() => setCommandContent(null));
+    }
+  }, [open, commandContent]);
+
+  const handleCopy = async () => {
+    if (commandContent) {
+      await navigator.clipboard.writeText(commandContent);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleDownload = () => {
+    if (commandContent) {
+      const blob = new Blob([commandContent], { type: "text/markdown" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "distill.md";
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  };
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="p-2 rounded-lg text-muted hover:text-ink hover:bg-card-alt transition-colors"
+        title="How to use Distill"
+      >
+        <HelpCircle className="w-5 h-5" />
+      </button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>How to use Distill</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2 text-sm text-muted">
+              <p>Distill captures wisdom from your Claude Code sessions into reusable knowledge.</p>
+              <p className="font-medium text-ink">In Claude Code, run:</p>
+              <code className="block px-3 py-2 rounded-lg bg-card-alt font-mono text-sm">/distill</code>
+              <p>This analyzes your conversation and extracts key learnings into structured documents stored in <code className="text-xs bg-card-alt px-1 rounded">~/.lovstudio/docs/distill/</code></p>
+            </div>
+
+            {commandContent && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-ink">Command File (distill.md)</p>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={handleCopy}
+                      className="p-1.5 rounded text-muted hover:text-ink hover:bg-card-alt transition-colors"
+                      title="Copy to clipboard"
+                    >
+                      {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                    <button
+                      onClick={handleDownload}
+                      className="p-1.5 rounded text-muted hover:text-ink hover:bg-card-alt transition-colors"
+                      title="Download file"
+                    >
+                      <Download className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+                <div className="max-h-[40vh] overflow-auto rounded-lg bg-card-alt p-3">
+                  <pre className="text-xs font-mono text-muted whitespace-pre-wrap">{commandContent}</pre>
+                </div>
+              </div>
+            )}
+
+            {commandContent === null && (
+              <p className="text-sm text-muted italic">Command file not found. Place distill.md in ~/.claude/commands/</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function DistillView({
+  onSelect,
+}: {
+  onSelect: (doc: DistillDocument) => void;
+}) {
+  const [documents, setDocuments] = useState<DistillDocument[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { search, setSearch, filtered } = useSearch(documents, ["title", "tags"]);
+
+  useEffect(() => {
+    invoke<DistillDocument[]>("list_distill_documents")
+      .then(setDocuments)
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <LoadingState message="Loading distill documents..." />;
+
+  return (
+    <ConfigPage>
+      <PageHeader
+        title="Distill"
+        subtitle={`${documents.length} experience summaries`}
+        action={<DistillHelpButton />}
+      />
+
+      <SearchInput
+        placeholder="Search by title or tags..."
+        value={search}
+        onChange={setSearch}
+      />
+
+      {filtered.length > 0 ? (
+        <div className="space-y-2">
+          {filtered.map((doc) => (
+            <ItemCard
+              key={doc.file}
+              name={doc.title}
+              description={doc.tags.map(t => `#${t}`).join(" ")}
+              badge={doc.date}
+              onClick={() => onSelect(doc)}
+            />
+          ))}
+        </div>
+      ) : !search ? (
+        <EmptyState
+          icon="💡"
+          message="No distill documents yet"
+          hint="Use /distill in Claude Code to capture wisdom"
+        />
+      ) : (
+        <p className="text-muted text-sm">No documents match "{search}"</p>
+      )}
+    </ConfigPage>
+  );
+}
+
+function DistillDetailView({
+  document,
+  onBack,
+}: {
+  document: DistillDocument;
+  onBack: () => void;
+}) {
+  const { homeDir } = useAppConfig();
+  const [content, setContent] = useState<string>("");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    invoke<string>("get_distill_document", { file: document.file })
+      .then(setContent)
+      .finally(() => setLoading(false));
+  }, [document.file]);
+
+  if (loading) return <LoadingState message="Loading document..." />;
+
+  const distillPath = `~/.lovstudio/docs/distill/${document.file}`;
+
+  return (
+    <ConfigPage>
+      <DetailHeader
+        title={document.title}
+        description={document.tags.map(t => `#${t}`).join(" · ")}
+        backLabel="Distill"
+        onBack={onBack}
+        path={distillPath}
+        onOpenPath={(p) => invoke("open_in_editor", { path: p.replace("~", homeDir) })}
+      />
+      <div className="space-y-4">
+        <DetailCard label="Metadata">
+          <div className="space-y-2 text-sm">
+            <p className="text-muted">Date: <span className="text-ink">{document.date}</span></p>
+            <p className="text-muted">Session: <span className="font-mono text-xs text-ink">{document.session.slice(0, 8)}...</span></p>
+          </div>
+        </DetailCard>
+        <ContentCard label="Content" content={content} />
       </div>
     </ConfigPage>
   );
