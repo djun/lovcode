@@ -2659,15 +2659,10 @@ function SessionList({
   const [hideEmptySessions, setHideEmptySessions] = usePersistedState("lovcode-hide-empty-sessions", false);
   const [userPromptsOnly, setUserPromptsOnly] = usePersistedState("lovcode:userPromptsOnly", false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null);
+  const [searching, setSearching] = useState(false);
 
-  const filteredSessions = sessions.filter(s => {
-    if (hideEmptySessions && s.message_count === 0) return false;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      return (s.summary || "").toLowerCase().includes(q);
-    }
-    return true;
-  });
+  const filteredSessions = hideEmptySessions ? sessions.filter(s => s.message_count > 0) : sessions;
 
   useEffect(() => {
     Promise.all([
@@ -2682,6 +2677,32 @@ function SessionList({
       })
       .finally(() => setLoading(false));
   }, [projectId, projectPath]);
+
+  // Debounced search effect
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSearchResults(null);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const results = await invoke<SearchResult[]>("search_chats", {
+          query: searchQuery,
+          limit: 50,
+          projectId,
+        });
+        setSearchResults(results);
+      } catch {
+        setSearchResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, projectId]);
 
   const formatDate = (ts: number) => {
     return new Date(ts * 1000).toLocaleString();
@@ -2778,11 +2799,18 @@ generator: "Lovcode"
         </h1>
       </header>
 
-      <SearchInput
-        placeholder="Search sessions..."
-        value={searchQuery}
-        onChange={setSearchQuery}
-      />
+      <div className="relative mb-6">
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search chats..."
+          className="w-full max-w-md px-4 py-2 pr-8 bg-card border border-border rounded-lg text-ink placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+        />
+        {searching && (
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">...</span>
+        )}
+      </div>
 
       {/* Context Card with Tabs */}
       {(globalContext.length > 0 || projectContext.length > 0) && (
@@ -2823,7 +2851,42 @@ generator: "Lovcode"
         </div>
       )}
 
+      {/* Search Results */}
+      {searchQuery.trim() && searchResults !== null && (
+        <>
+          <p className="mb-4 text-xs text-muted-foreground uppercase tracking-wide">
+            🔍 Search Results ({searchResults.length})
+          </p>
+          <div className="space-y-3 mb-6">
+            {searchResults.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">No results found</p>
+            ) : (
+              searchResults.map((result) => (
+                <div
+                  key={result.uuid}
+                  className="w-full text-left bg-card rounded-xl p-4 border border-border hover:border-primary transition-colors cursor-pointer"
+                  onClick={() => {
+                    const session = sessions.find(s => s.id === result.session_id);
+                    if (session) onSelect(session);
+                  }}
+                >
+                  <p className="text-xs text-muted-foreground mb-1">
+                    {result.session_summary || "Untitled session"}
+                  </p>
+                  <p className="text-sm text-ink line-clamp-3">{result.content}</p>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {result.role} · {result.timestamp}
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
+        </>
+      )}
+
       {/* Sessions Header */}
+      {!(searchQuery.trim() && searchResults !== null) && (
+      <>
       <div className="mb-4 flex items-center justify-between">
         <p className="text-xs text-muted-foreground uppercase tracking-wide">
           💬 Sessions ({hideEmptySessions ? `${filteredSessions.length}/${sessions.length}` : sessions.length})
@@ -2904,6 +2967,8 @@ generator: "Lovcode"
           );
         })}
       </div>
+      </>
+      )}
     </div>
   );
 }

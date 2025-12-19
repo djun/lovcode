@@ -762,7 +762,7 @@ async fn build_search_index() -> Result<usize, String> {
 }
 
 #[tauri::command]
-fn search_chats(query: String, limit: Option<usize>) -> Result<Vec<SearchResult>, String> {
+fn search_chats(query: String, limit: Option<usize>, project_id: Option<String>) -> Result<Vec<SearchResult>, String> {
     let max_results = limit.unwrap_or(50);
 
     // Try to get index from global state or load from disk
@@ -814,13 +814,22 @@ fn search_chats(query: String, limit: Option<usize>) -> Result<Vec<SearchResult>
                 .to_string()
         };
 
+        let doc_project_id = get_text("project_id");
+
+        // Filter by project_id if specified
+        if let Some(ref filter_id) = project_id {
+            if &doc_project_id != filter_id {
+                continue;
+            }
+        }
+
         let summary = get_text("session_summary");
 
         results.push(SearchResult {
             uuid: get_text("uuid"),
             content: get_text("content"),
             role: get_text("role"),
-            project_id: get_text("project_id"),
+            project_id: doc_project_id,
             project_path: get_text("project_path"),
             session_id: get_text("session_id"),
             session_summary: if summary.is_empty() { None } else { Some(summary) },
