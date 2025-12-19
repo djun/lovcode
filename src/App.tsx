@@ -95,7 +95,7 @@ export const useAppConfig = () => useContext(AppConfigContext);
 // Types & Config
 // ============================================================================
 
-type FeatureType = "chat" | "settings" | "commands" | "mcp" | "skills" | "hooks" | "sub-agents" | "output-styles" | "marketplace" | "kb-distill" | "kb-notes" | "kb-bookmarks";
+type FeatureType = "chat" | "settings" | "commands" | "mcp" | "skills" | "hooks" | "sub-agents" | "output-styles" | "marketplace" | "kb-distill" | "kb-reference";
 
 interface FeatureConfig {
   type: FeatureType;
@@ -113,9 +113,8 @@ const FEATURES: FeatureConfig[] = [
   // Projects
   { type: "chat", label: "Projects", icon: "💬", description: "Browse conversation history", available: true, group: "history" },
   // Knowledge (collapsible submenu)
+  { type: "kb-reference", label: "Reference", icon: "📖", description: "Platform docs", available: true, group: "knowledge" },
   { type: "kb-distill", label: "Distill (CC)", icon: "💡", description: "Experience summaries", available: true, group: "knowledge" },
-  { type: "kb-notes", label: "Notes", icon: "📝", description: "Markdown notes", available: false, group: "knowledge" },
-  { type: "kb-bookmarks", label: "Bookmarks", icon: "🔖", description: "External links", available: false, group: "knowledge" },
   // Configuration
   { type: "settings", label: "Configuration", icon: "⚙️", description: "Permissions, context & config", available: true, group: "config" },
   { type: "commands", label: "Commands", icon: "⚡", description: "Slash commands", available: true, group: "config" },
@@ -297,8 +296,7 @@ type View =
   | { type: "output-styles" }
   | { type: "kb-distill" }
   | { type: "kb-distill-detail"; document: DistillDocument }
-  | { type: "kb-notes" }
-  | { type: "kb-bookmarks" }
+  | { type: "kb-reference" }
   | { type: "marketplace"; category?: TemplateCategory }
   | { type: "template-detail"; template: TemplateComponent; category: TemplateCategory }
   | { type: "feature-todo"; feature: FeatureType };
@@ -428,11 +426,9 @@ function App() {
                     ? "output-styles"
                     : view.type === "kb-distill" || view.type === "kb-distill-detail"
                       ? "kb-distill"
-                      : view.type === "kb-notes"
-                        ? "kb-notes"
-                        : view.type === "kb-bookmarks"
-                          ? "kb-bookmarks"
-                          : view.type === "marketplace" || view.type === "template-detail"
+                      : view.type === "kb-reference"
+                        ? "kb-reference"
+                        : view.type === "marketplace" || view.type === "template-detail"
                         ? "marketplace"
                         : view.type === "feature-todo"
                           ? view.feature
@@ -467,11 +463,8 @@ function App() {
       case "kb-distill":
         navigate({ type: "kb-distill" });
         break;
-      case "kb-notes":
-        navigate({ type: "kb-notes" });
-        break;
-      case "kb-bookmarks":
-        navigate({ type: "kb-bookmarks" });
+      case "kb-reference":
+        navigate({ type: "kb-reference" });
         break;
       case "marketplace":
         navigate({ type: "marketplace", category: marketplaceCategory });
@@ -842,47 +835,10 @@ function App() {
           />
         )}
 
-        {view.type === "kb-notes" && (
+        {view.type === "kb-reference" && (
           <ConfigPage>
-            <PageHeader title="Notes" subtitle="Markdown notes" />
-            <Collapsible>
-              <CollapsibleTrigger className="w-full group">
-                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-card-alt/50 text-sm text-muted-foreground hover:text-ink transition-colors">
-                  <span>📝</span>
-                  <span>About Notes</span>
-                  <ChevronDown className="w-3 h-3 ml-auto transition-transform group-data-[state=open]:rotate-180" />
-                </div>
-              </CollapsibleTrigger>
-              <CollapsibleBody>
-                <div className="mt-2 px-3 py-3 rounded-lg bg-card-alt/30 text-sm text-muted-foreground space-y-2">
-                  <p>Store and organize your markdown notes directly in Lovcode.</p>
-                  <p className="text-xs">Create personal notes, snippets, and references that complement your distilled knowledge.</p>
-                </div>
-              </CollapsibleBody>
-            </Collapsible>
-            <EmptyState icon="📝" message="Notes coming soon" hint="Support for markdown notes will be added" />
-          </ConfigPage>
-        )}
-
-        {view.type === "kb-bookmarks" && (
-          <ConfigPage>
-            <PageHeader title="Bookmarks" subtitle="External links & docs" />
-            <Collapsible>
-              <CollapsibleTrigger className="w-full group">
-                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-card-alt/50 text-sm text-muted-foreground hover:text-ink transition-colors">
-                  <span>🔖</span>
-                  <span>About Bookmarks</span>
-                  <ChevronDown className="w-3 h-3 ml-auto transition-transform group-data-[state=open]:rotate-180" />
-                </div>
-              </CollapsibleTrigger>
-              <CollapsibleBody>
-                <div className="mt-2 px-3 py-3 rounded-lg bg-card-alt/30 text-sm text-muted-foreground space-y-2">
-                  <p>Save links to external documentation, tutorials, and resources.</p>
-                  <p className="text-xs">Build a curated library of references for quick access during development.</p>
-                </div>
-              </CollapsibleBody>
-            </Collapsible>
-            <EmptyState icon="🔖" message="Bookmarks coming soon" hint="Save and organize external documentation links" />
+            <PageHeader title="Reference" subtitle="Platform documentation" />
+            <ReferenceView />
           </ConfigPage>
         )}
 
@@ -1536,6 +1492,218 @@ function DistillDetailView({
         <ContentCard label="Content" content={content} />
       </div>
     </ConfigPage>
+  );
+}
+
+// ============================================================================
+// Reference Feature
+// ============================================================================
+
+interface ReferenceSource {
+  name: string;
+  path: string;
+  doc_count: number;
+}
+
+interface ReferenceDoc {
+  name: string;
+  path: string;
+}
+
+function ReferenceView() {
+  const [sources, setSources] = useState<ReferenceSource[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedSource, setExpandedSource] = useState<string | null>(null);
+  const [docs, setDocs] = useState<ReferenceDoc[]>([]);
+  const [docsLoading, setDocsLoading] = useState(false);
+  const [selectedDoc, setSelectedDoc] = useState<{ source: string; doc: ReferenceDoc; index: number } | null>(null);
+  const [docContent, setDocContent] = useState<string>("");
+  const [docLoading, setDocLoading] = useState(false);
+  const [showGoToTop, setShowGoToTop] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    invoke<ReferenceSource[]>("list_reference_sources")
+      .then(setSources)
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Scroll listener for Go to Top button
+  useEffect(() => {
+    if (!selectedDoc) {
+      setShowGoToTop(false);
+      return;
+    }
+    const scrollContainer = containerRef.current?.closest("main");
+    if (!scrollContainer) return;
+
+    const handleScroll = () => {
+      setShowGoToTop(scrollContainer.scrollTop > 200);
+    };
+    scrollContainer.addEventListener("scroll", handleScroll);
+    return () => scrollContainer.removeEventListener("scroll", handleScroll);
+  }, [selectedDoc]);
+
+  const scrollToTop = () => {
+    const scrollContainer = containerRef.current?.closest("main");
+    scrollContainer?.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleSourceClick = async (source: ReferenceSource) => {
+    if (expandedSource === source.name) {
+      setExpandedSource(null);
+      setDocs([]);
+      return;
+    }
+    setExpandedSource(source.name);
+    setDocsLoading(true);
+    try {
+      const result = await invoke<ReferenceDoc[]>("list_reference_docs", { source: source.name });
+      setDocs(result);
+    } finally {
+      setDocsLoading(false);
+    }
+  };
+
+  const handleDocClick = async (source: string, doc: ReferenceDoc, index: number) => {
+    setSelectedDoc({ source, doc, index });
+    setDocLoading(true);
+    try {
+      const content = await invoke<string>("get_reference_doc", { path: doc.path });
+      setDocContent(content);
+    } finally {
+      setDocLoading(false);
+    }
+  };
+
+  const handlePrev = () => {
+    if (!selectedDoc || selectedDoc.index <= 0) return;
+    const prevDoc = docs[selectedDoc.index - 1];
+    handleDocClick(selectedDoc.source, prevDoc, selectedDoc.index - 1);
+  };
+
+  const handleNext = () => {
+    if (!selectedDoc || selectedDoc.index >= docs.length - 1) return;
+    const nextDoc = docs[selectedDoc.index + 1];
+    handleDocClick(selectedDoc.source, nextDoc, selectedDoc.index + 1);
+  };
+
+  if (loading) return <LoadingState message="Loading reference sources..." />;
+
+  if (selectedDoc) {
+    const hasPrev = selectedDoc.index > 0;
+    const hasNext = selectedDoc.index < docs.length - 1;
+
+    return (
+      <div ref={containerRef} className="space-y-4 relative">
+        <div className="flex items-center justify-between">
+          <button
+            onClick={() => setSelectedDoc(null)}
+            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-ink transition-colors"
+          >
+            <ChevronDown className="w-4 h-4 rotate-90" />
+            Back to {selectedDoc.source}
+          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={handlePrev}
+              disabled={!hasPrev}
+              className={`p-1.5 rounded-lg transition-colors ${hasPrev ? "hover:bg-card-alt text-muted-foreground hover:text-ink" : "text-muted-foreground/30 cursor-not-allowed"}`}
+              title="Previous document"
+            >
+              <ChevronDown className="w-4 h-4 rotate-90" />
+            </button>
+            <span className="text-xs text-muted-foreground px-2">{selectedDoc.index + 1} / {docs.length}</span>
+            <button
+              onClick={handleNext}
+              disabled={!hasNext}
+              className={`p-1.5 rounded-lg transition-colors ${hasNext ? "hover:bg-card-alt text-muted-foreground hover:text-ink" : "text-muted-foreground/30 cursor-not-allowed"}`}
+              title="Next document"
+            >
+              <ChevronDown className="w-4 h-4 -rotate-90" />
+            </button>
+          </div>
+        </div>
+        <PageHeader title={selectedDoc.doc.name} subtitle={selectedDoc.source} />
+        {docLoading ? (
+          <LoadingState message="Loading document..." />
+        ) : (
+          <>
+            <ContentCard label="" content={docContent} showGoToTop={showGoToTop} onGoToTop={scrollToTop} />
+            <div className="flex items-center justify-between pt-4 border-t border-border">
+              <button
+                onClick={handlePrev}
+                disabled={!hasPrev}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${hasPrev ? "hover:bg-card-alt text-muted-foreground hover:text-ink" : "text-muted-foreground/30 cursor-not-allowed"}`}
+              >
+                <ChevronDown className="w-4 h-4 rotate-90" />
+                {hasPrev && docs[selectedDoc.index - 1]?.name}
+              </button>
+              <button
+                onClick={handleNext}
+                disabled={!hasNext}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${hasNext ? "hover:bg-card-alt text-muted-foreground hover:text-ink" : "text-muted-foreground/30 cursor-not-allowed"}`}
+              >
+                {hasNext && docs[selectedDoc.index + 1]?.name}
+                <ChevronDown className="w-4 h-4 -rotate-90" />
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {sources.length > 0 ? (
+        sources.map((source) => (
+          <div key={source.name}>
+            <button
+              onClick={() => handleSourceClick(source)}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-colors ${
+                expandedSource === source.name
+                  ? "bg-primary/10 text-primary"
+                  : "bg-card hover:bg-card-alt"
+              }`}
+            >
+              <span className="text-lg">📖</span>
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-sm">{source.name}</div>
+                <div className="text-xs text-muted-foreground">{source.doc_count} docs</div>
+              </div>
+              <ChevronDown className={`w-4 h-4 transition-transform ${expandedSource === source.name ? "rotate-180" : ""}`} />
+            </button>
+            {expandedSource === source.name && (
+              <div className="ml-4 mt-1 space-y-1">
+                {docsLoading ? (
+                  <div className="px-4 py-2 text-sm text-muted-foreground">Loading...</div>
+                ) : docs.length > 0 ? (
+                  docs.map((doc, index) => (
+                    <button
+                      key={doc.path}
+                      onClick={() => handleDocClick(source.name, doc, index)}
+                      className="w-full flex items-center gap-2 px-4 py-2 rounded-lg text-left text-sm hover:bg-card-alt transition-colors"
+                    >
+                      <span className="text-muted-foreground">📄</span>
+                      <span className="truncate">{doc.name}</span>
+                    </button>
+                  ))
+                ) : (
+                  <div className="px-4 py-2 text-sm text-muted-foreground">No documents</div>
+                )}
+              </div>
+            )}
+          </div>
+        ))
+      ) : (
+        <EmptyState
+          icon="📖"
+          message="No reference sources"
+          hint="Add documentation symlinks to ~/.lovstudio/docs/reference/"
+        />
+      )}
+    </div>
   );
 }
 

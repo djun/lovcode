@@ -1212,6 +1212,100 @@ fn get_distill_dir() -> PathBuf {
         .join(".lovstudio/docs/distill")
 }
 
+fn get_reference_dir() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".lovstudio/docs/reference")
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ReferenceSource {
+    pub name: String,
+    pub path: String,
+    pub doc_count: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ReferenceDoc {
+    pub name: String,
+    pub path: String,
+}
+
+#[tauri::command]
+fn list_reference_sources() -> Result<Vec<ReferenceSource>, String> {
+    let ref_dir = get_reference_dir();
+    if !ref_dir.exists() {
+        return Ok(vec![]);
+    }
+
+    let mut sources = Vec::new();
+    for entry in fs::read_dir(&ref_dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+
+        // Follow symlinks and check if it's a directory
+        let metadata = fs::metadata(&path).map_err(|e| e.to_string())?;
+        if metadata.is_dir() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            let doc_count = fs::read_dir(&path)
+                .map(|entries| entries.filter(|e| {
+                    e.as_ref().ok().map(|e| {
+                        e.path().extension().map(|ext| ext == "md").unwrap_or(false)
+                    }).unwrap_or(false)
+                }).count())
+                .unwrap_or(0);
+
+            sources.push(ReferenceSource {
+                name,
+                path: path.to_string_lossy().to_string(),
+                doc_count,
+            });
+        }
+    }
+
+    sources.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(sources)
+}
+
+#[tauri::command]
+fn list_reference_docs(source: String) -> Result<Vec<ReferenceDoc>, String> {
+    let ref_dir = get_reference_dir();
+    let source_dir = ref_dir.join(&source);
+
+    if !source_dir.exists() {
+        return Ok(vec![]);
+    }
+
+    let mut docs = Vec::new();
+    for entry in fs::read_dir(&source_dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+
+        if path.extension().map(|e| e == "md").unwrap_or(false) {
+            let name = path.file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default();
+
+            docs.push(ReferenceDoc {
+                name,
+                path: path.to_string_lossy().to_string(),
+            });
+        }
+    }
+
+    docs.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(docs)
+}
+
+#[tauri::command]
+fn get_reference_doc(path: String) -> Result<String, String> {
+    let doc_path = PathBuf::from(&path);
+    if !doc_path.exists() {
+        return Err(format!("Document not found: {}", path));
+    }
+    fs::read_to_string(&doc_path).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn list_distill_documents() -> Result<Vec<DistillDocument>, String> {
     let distill_dir = get_distill_dir();
@@ -2166,7 +2260,10 @@ pub fn run() {
             find_session_project,
             get_distill_command_file,
             get_distill_watch_enabled,
-            set_distill_watch_enabled
+            set_distill_watch_enabled,
+            list_reference_sources,
+            list_reference_docs,
+            get_reference_doc
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

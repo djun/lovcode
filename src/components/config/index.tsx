@@ -1,6 +1,6 @@
 import { useState, useEffect, ReactNode, ComponentType } from "react";
 import Markdown from "react-markdown";
-import { ExternalLink, Download, MessageCircle, MoreHorizontal, type LucideProps } from "lucide-react";
+import { ExternalLink, Download, MessageCircle, MoreHorizontal, ChevronDown, type LucideProps } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -279,19 +279,40 @@ export function DetailCard({
   const bgClass = variant === "default" ? "bg-card border border-border" : "bg-card-alt";
 
   return (
-    <div className={`rounded-xl p-4 ${bgClass}`}>
+    <div className={`rounded-xl p-4 ${bgClass} relative`}>
       <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">{label}</p>
       {children}
     </div>
   );
 }
 
-export function ContentCard({ label, content }: { label: string; content: string }) {
+export function ContentCard({
+  label,
+  content,
+  showGoToTop,
+  onGoToTop,
+}: {
+  label: string;
+  content: string;
+  showGoToTop?: boolean;
+  onGoToTop?: () => void;
+}) {
   return (
     <DetailCard label={label}>
       <div className="prose prose-sm max-w-none text-ink">
         <Markdown>{content}</Markdown>
       </div>
+      {showGoToTop && onGoToTop && (
+        <div className="sticky bottom-4 flex justify-end pointer-events-none">
+          <button
+            onClick={onGoToTop}
+            className="pointer-events-auto p-3 bg-background border border-border rounded-full shadow-lg hover:bg-card-alt transition-colors"
+            title="Go to top"
+          >
+            <ChevronDown className="w-5 h-5 rotate-180" />
+          </button>
+        </div>
+      )}
     </DetailCard>
   );
 }
