@@ -19,6 +19,7 @@
     "@radix-ui/react-select": "^2.2.6",
     "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.1.17",
+    "@tanstack/react-virtual": "^3.13.13",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2",
     "@tauri-apps/plugin-opener": "^2",

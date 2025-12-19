@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef, createContext, useContext, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef, createContext, useContext, useMemo, UIEvent } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { version } from "../package.json";
@@ -2145,6 +2146,103 @@ function FeatureTodo({ feature }: { feature: FeatureType }) {
 type SortKey = "recent" | "sessions" | "name";
 type ChatViewMode = "projects" | "sessions" | "chats";
 
+function VirtualChatList({
+  chats,
+  onSelectChat,
+  formatPath,
+  hasMore,
+  loadMore,
+  loadingMore,
+}: {
+  chats: (ChatMessage | SearchResult)[];
+  onSelectChat: (c: ChatMessage) => void;
+  formatPath: (p: string) => string;
+  hasMore: boolean;
+  loadMore: () => void;
+  loadingMore: boolean;
+}) {
+  const parentRef = useRef<HTMLDivElement>(null);
+  const ITEM_HEIGHT = 110; // Approximate height of each chat item
+
+  const virtualizer = useVirtualizer({
+    count: chats.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => ITEM_HEIGHT,
+    overscan: 5,
+  });
+
+  // Infinite scroll: load more when near bottom
+  const handleScroll = useCallback((e: UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    const nearBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 200;
+    if (nearBottom && hasMore && !loadingMore) {
+      loadMore();
+    }
+  }, [hasMore, loadMore, loadingMore]);
+
+  return (
+    <div
+      ref={parentRef}
+      onScroll={handleScroll}
+      className="h-[calc(100vh-320px)] overflow-auto -mr-4 pr-4"
+    >
+      <div
+        style={{
+          height: `${virtualizer.getTotalSize()}px`,
+          width: "100%",
+          position: "relative",
+        }}
+      >
+        {virtualizer.getVirtualItems().map((virtualItem) => {
+          const chat = chats[virtualItem.index];
+          return (
+            <div
+              key={chat.uuid}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                height: `${virtualItem.size}px`,
+                transform: `translateY(${virtualItem.start}px)`,
+              }}
+              className="pb-3"
+            >
+              <button
+                onClick={() => onSelectChat(chat)}
+                className="w-full h-full text-left bg-card rounded-xl p-4 border border-border hover:border-primary transition-colors"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={`text-xs px-1.5 py-0.5 rounded ${
+                    chat.role === "user" ? "bg-primary/15 text-primary" : "bg-card-alt text-muted-foreground"
+                  }`}>
+                    {chat.role}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {chat.timestamp ? new Date(chat.timestamp).toLocaleString() : ""}
+                  </span>
+                  {"score" in chat && (
+                    <span className="text-xs text-muted-foreground">
+                      · score: {(chat as SearchResult).score.toFixed(2)}
+                    </span>
+                  )}
+                </div>
+                <p className="text-ink line-clamp-2">{chat.content}</p>
+                <p className="text-xs text-muted-foreground mt-2 truncate">
+                  {formatPath(chat.project_path)} · {chat.session_summary || "Untitled"}
+                </p>
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      {loadingMore && (
+        <div className="py-4 text-center text-muted-foreground text-sm">Loading more...</div>
+      )}
+    </div>
+  );
+}
+
 function ProjectList({
   onSelectProject,
   onSelectSession,
@@ -2162,7 +2260,9 @@ function ProjectList({
   const [loadingProjects, setLoadingProjects] = useState(false);
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [loadingChats, setLoadingChats] = useState(false);
+  const [loadingMoreChats, setLoadingMoreChats] = useState(false);
   const [totalChats, setTotalChats] = useState(0);
+  const CHATS_PAGE_SIZE = 50;
   const [sortBy, setSortBy] = useState<SortKey>("recent");
   const [hideEmptySessions, setHideEmptySessions] = usePersistedState("lovcode-hide-empty-sessions-all", false);
   // Search state
@@ -2197,7 +2297,7 @@ function ProjectList({
   useEffect(() => {
     if (viewMode === "chats" && allChats === null && !loadingChats) {
       setLoadingChats(true);
-      invoke<ChatsResponse>("list_all_chats", { limit: 500 })
+      invoke<ChatsResponse>("list_all_chats", { limit: CHATS_PAGE_SIZE })
         .then((res) => {
           setAllChats(res.items);
           setTotalChats(res.total);
@@ -2205,6 +2305,21 @@ function ProjectList({
         .finally(() => setLoadingChats(false));
     }
   }, [viewMode, allChats, loadingChats]);
+
+  // Load more chats
+  const loadMoreChats = useCallback(async () => {
+    if (loadingMoreChats || !allChats || allChats.length >= totalChats) return;
+    setLoadingMoreChats(true);
+    try {
+      const res = await invoke<ChatsResponse>("list_all_chats", {
+        limit: CHATS_PAGE_SIZE,
+        offset: allChats.length
+      });
+      setAllChats(prev => [...(prev || []), ...res.items]);
+    } finally {
+      setLoadingMoreChats(false);
+    }
+  }, [allChats, totalChats, loadingMoreChats]);
 
   const loading = viewMode === "projects" ? loadingProjects : viewMode === "sessions" ? loadingSessions : loadingChats;
 
@@ -2301,7 +2416,7 @@ function ProjectList({
             ? `${(projects || []).length} projects with Claude Code history`
             : viewMode === "sessions"
               ? `${filteredSessions.length} sessions${hideEmptySessions ? ` (${(allSessions || []).length - filteredSessions.length} hidden)` : ""}`
-              : `${totalChats} messages${indexBuilt ? " · Index ready" : indexBuilding ? " · Building index..." : ""}`}
+              : `${(allChats || []).length} / ${totalChats} messages${indexBuilt ? " · Index ready" : indexBuilding ? " · Building index..." : ""}`}
         </p>
       </header>
 
@@ -2408,9 +2523,9 @@ function ProjectList({
       )}
 
       {/* Content List */}
-      <div className="space-y-3">
-        {viewMode === "projects" ? (
-          sortedProjects.map((project) => (
+      {viewMode === "projects" ? (
+        <div className="space-y-3">
+          {sortedProjects.map((project) => (
             <button
               key={project.id}
               onClick={() => onSelectProject(project)}
@@ -2421,9 +2536,11 @@ function ProjectList({
                 {project.session_count} session{project.session_count !== 1 ? "s" : ""} · {formatRelativeTime(project.last_active)}
               </p>
             </button>
-          ))
-        ) : viewMode === "sessions" ? (
-          sortedSessions.map((session) => (
+          ))}
+        </div>
+      ) : viewMode === "sessions" ? (
+        <div className="space-y-3">
+          {sortedSessions.map((session) => (
             <button
               key={`${session.project_id}-${session.id}`}
               onClick={() => onSelectSession(session)}
@@ -2439,38 +2556,18 @@ function ProjectList({
                 {session.message_count} messages · {formatRelativeTime(session.last_modified)}
               </p>
             </button>
-          ))
-        ) : (
-          // Show search results if available, otherwise show all chats
-          (searchResults !== null ? searchResults : (allChats || [])).map((chat) => (
-            <button
-              key={chat.uuid}
-              onClick={() => onSelectChat(chat)}
-              className="w-full text-left bg-card rounded-xl p-4 border border-border hover:border-primary transition-colors"
-            >
-              <div className="flex items-center gap-2 mb-1">
-                <span className={`text-xs px-1.5 py-0.5 rounded ${
-                  chat.role === "user" ? "bg-primary/15 text-primary" : "bg-card-alt text-muted-foreground"
-                }`}>
-                  {chat.role}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {chat.timestamp ? new Date(chat.timestamp).toLocaleString() : ""}
-                </span>
-                {"score" in chat && (
-                  <span className="text-xs text-muted-foreground">
-                    · score: {(chat as SearchResult).score.toFixed(2)}
-                  </span>
-                )}
-              </div>
-              <p className="text-ink line-clamp-2">{chat.content}</p>
-              <p className="text-xs text-muted-foreground mt-2 truncate">
-                {formatPath(chat.project_path)} · {chat.session_summary || "Untitled"}
-              </p>
-            </button>
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <VirtualChatList
+          chats={searchResults !== null ? searchResults : (allChats || [])}
+          onSelectChat={onSelectChat}
+          formatPath={formatPath}
+          hasMore={searchResults === null && (allChats?.length || 0) < totalChats}
+          loadMore={loadMoreChats}
+          loadingMore={loadingMoreChats}
+        />
+      )}
     </div>
   );
 }

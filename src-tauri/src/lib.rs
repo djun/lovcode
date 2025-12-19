@@ -472,10 +472,11 @@ async fn list_all_sessions() -> Result<Vec<Session>, String> {
 }
 
 #[tauri::command]
-async fn list_all_chats(limit: Option<usize>) -> Result<ChatsResponse, String> {
+async fn list_all_chats(limit: Option<usize>, offset: Option<usize>) -> Result<ChatsResponse, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let projects_dir = get_claude_dir().join("projects");
-        let max_messages = limit.unwrap_or(500);
+        let max_messages = limit.unwrap_or(50);
+        let skip = offset.unwrap_or(0);
 
         if !projects_dir.exists() {
             return Ok(ChatsResponse { items: vec![], total: 0 });
@@ -570,9 +571,9 @@ async fn list_all_chats(limit: Option<usize>) -> Result<ChatsResponse, String> {
         all_chats.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
 
         let total = all_chats.len();
-        all_chats.truncate(max_messages);
+        let items: Vec<ChatMessage> = all_chats.into_iter().skip(skip).take(max_messages).collect();
 
-        Ok(ChatsResponse { items: all_chats, total })
+        Ok(ChatsResponse { items, total })
     })
     .await
     .map_err(|e| e.to_string())?
