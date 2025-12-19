@@ -837,7 +837,6 @@ function App() {
 
         {view.type === "kb-reference" && (
           <ConfigPage>
-            <PageHeader title="Reference" subtitle="Platform documentation" />
             <ReferenceView />
           </ConfigPage>
         )}
@@ -1624,7 +1623,6 @@ function ReferenceView() {
             </button>
           </div>
         </div>
-        <PageHeader title={selectedDoc.doc.name} subtitle={selectedDoc.source} />
         {docLoading ? (
           <LoadingState message="Loading document..." />
         ) : (
