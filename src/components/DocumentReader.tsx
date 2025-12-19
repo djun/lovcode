@@ -470,7 +470,7 @@ function CodeBlock({
 
   // Code block
   return (
-    <div className="relative group not-prose my-4 border border-border rounded-xl overflow-hidden">
+    <div className="relative group not-prose my-4 border border-border rounded-xl overflow-hidden bg-[#F0EEE6]">
       {/* Header with language and copy button */}
       <div className="flex items-center justify-between px-4 py-2 bg-card-alt border-b border-border">
         <span className="text-xs text-muted-foreground font-mono">{language || "text"}</span>
@@ -499,7 +499,8 @@ function CodeBlock({
         customStyle={{
           margin: 0,
           borderRadius: 0,
-          background: "hsl(var(--card-alt))",
+          padding: "1rem 1.25rem",
+          background: "#F0EEE6",
         }}
       >
         {codeString}
@@ -595,6 +596,8 @@ function DocumentContent({
       h5: createHeading("h5"),
       h6: createHeading("h6"),
       code: CodeBlock,
+      // Strip default pre styling - CodeBlock handles it
+      pre: ({ children }: React.HTMLAttributes<HTMLPreElement>) => <>{children}</>,
     };
   }, [getHeadingId, onHeadingRender]);
 
