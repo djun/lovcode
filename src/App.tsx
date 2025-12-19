@@ -10,6 +10,7 @@ import { Switch } from "./components/ui/switch";
 import { Avatar, AvatarImage, AvatarFallback } from "./components/ui/avatar";
 import { Popover, PopoverTrigger, PopoverContent } from "./components/ui/popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./components/ui/select";
 import {
   ContextMenu,
   ContextMenuTrigger,
@@ -426,7 +427,7 @@ function App() {
         <div data-tauri-drag-region className="h-[52px] shrink-0 flex items-center justify-end px-3 border-b border-border min-w-52">
           <button
             onClick={() => setSidebarCollapsed(true)}
-            className="p-1.5 rounded-md text-muted hover:text-ink hover:bg-card-alt"
+            className="p-1.5 rounded-md text-muted-foreground hover:text-ink hover:bg-card-alt"
             title="Collapse sidebar"
           >
             <PanelLeft className="w-4 h-4" />
@@ -500,7 +501,7 @@ function App() {
 
           {/* Config Group */}
           <div className="px-2 py-2 border-t border-border">
-            <p className="text-xs text-muted uppercase tracking-wide px-3 py-2">Features</p>
+            <p className="text-xs text-muted-foreground uppercase tracking-wide px-3 py-2">Features</p>
             {FEATURES.filter(f => f.group === "config").map((feature) => (
               <FeatureButton
                 key={feature.type}
@@ -513,7 +514,7 @@ function App() {
         </div>
 
         <div className="p-3 border-t border-border min-w-52">
-          <p className="text-xs text-muted text-center">Lovcode v{version}</p>
+          <p className="text-xs text-muted-foreground text-center">Lovcode v{version}</p>
         </div>
       </aside>
 
@@ -527,7 +528,7 @@ function App() {
           <div className={`pl-[92px] transition-opacity duration-300 ${sidebarCollapsed ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
             <button
               onClick={() => setSidebarCollapsed(false)}
-              className="p-1.5 rounded-md text-muted hover:text-ink hover:bg-card-alt"
+              className="p-1.5 rounded-md text-muted-foreground hover:text-ink hover:bg-card-alt"
               title="Expand sidebar"
             >
               <PanelLeft className="w-4 h-4" />
@@ -554,13 +555,13 @@ function App() {
                   )}
                   <button
                     onClick={() => setShowProfileDialog(true)}
-                    className="w-full text-left px-2 py-1.5 text-sm text-muted hover:text-ink hover:bg-card-alt rounded-md transition-colors"
+                    className="w-full text-left px-2 py-1.5 text-sm text-muted-foreground hover:text-ink hover:bg-card-alt rounded-md transition-colors"
                   >
                     Edit Profile
                   </button>
                   <button
                     onClick={() => setShowSettings(true)}
-                    className="w-full text-left px-2 py-1.5 text-sm text-muted hover:text-ink hover:bg-card-alt rounded-md transition-colors"
+                    className="w-full text-left px-2 py-1.5 text-sm text-muted-foreground hover:text-ink hover:bg-card-alt rounded-md transition-colors"
                   >
                     Settings
                   </button>
@@ -723,14 +724,14 @@ function App() {
             <PageHeader title="Notes" subtitle="Markdown notes" />
             <Collapsible>
               <CollapsibleTrigger className="w-full group">
-                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-card-alt/50 text-sm text-muted hover:text-ink transition-colors">
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-card-alt/50 text-sm text-muted-foreground hover:text-ink transition-colors">
                   <span>📝</span>
                   <span>About Notes</span>
                   <ChevronDown className="w-3 h-3 ml-auto transition-transform group-data-[state=open]:rotate-180" />
                 </div>
               </CollapsibleTrigger>
               <CollapsibleBody>
-                <div className="mt-2 px-3 py-3 rounded-lg bg-card-alt/30 text-sm text-muted space-y-2">
+                <div className="mt-2 px-3 py-3 rounded-lg bg-card-alt/30 text-sm text-muted-foreground space-y-2">
                   <p>Store and organize your markdown notes directly in Lovcode.</p>
                   <p className="text-xs">Create personal notes, snippets, and references that complement your distilled knowledge.</p>
                 </div>
@@ -745,14 +746,14 @@ function App() {
             <PageHeader title="Bookmarks" subtitle="External links & docs" />
             <Collapsible>
               <CollapsibleTrigger className="w-full group">
-                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-card-alt/50 text-sm text-muted hover:text-ink transition-colors">
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-card-alt/50 text-sm text-muted-foreground hover:text-ink transition-colors">
                   <span>🔖</span>
                   <span>About Bookmarks</span>
                   <ChevronDown className="w-3 h-3 ml-auto transition-transform group-data-[state=open]:rotate-180" />
                 </div>
               </CollapsibleTrigger>
               <CollapsibleBody>
-                <div className="mt-2 px-3 py-3 rounded-lg bg-card-alt/30 text-sm text-muted space-y-2">
+                <div className="mt-2 px-3 py-3 rounded-lg bg-card-alt/30 text-sm text-muted-foreground space-y-2">
                   <p>Save links to external documentation, tutorials, and resources.</p>
                   <p className="text-xs">Build a curated library of references for quick access during development.</p>
                 </div>
@@ -826,13 +827,13 @@ function AppSettingsDialog({ open, onClose }: { open: boolean; onClose: () => vo
       <div className="relative bg-card rounded-xl border border-border shadow-xl w-96 max-w-[90vw]">
         <div className="px-5 py-4 border-b border-border flex items-center justify-between">
           <h2 className="text-lg font-semibold text-ink">Settings</h2>
-          <button onClick={onClose} className="text-muted hover:text-ink text-xl leading-none">&times;</button>
+          <button onClick={onClose} className="text-muted-foreground hover:text-ink text-xl leading-none">&times;</button>
         </div>
         <div className="p-5 space-y-4">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-ink">Shorten paths</p>
-              <p className="text-xs text-muted">Replace home directory with ~</p>
+              <p className="text-xs text-muted-foreground">Replace home directory with ~</p>
             </div>
             <Switch checked={shortenPaths} onCheckedChange={setShortenPaths} />
           </div>
@@ -925,7 +926,7 @@ function ProfileDialog({
               onChange={handleFileChange}
               className="hidden"
             />
-            <p className="text-xs text-muted">Click avatar to upload</p>
+            <p className="text-xs text-muted-foreground">Click avatar to upload</p>
           </div>
 
           {/* Nickname */}
@@ -969,7 +970,7 @@ function FeatureButton({
           ? "bg-primary/10 text-primary"
           : feature.available
             ? "text-ink hover:bg-card-alt"
-            : "text-muted/60 hover:bg-card-alt"
+            : "text-muted-foreground/60 hover:bg-card-alt"
       }`}
     >
       <span className="text-lg">{feature.icon}</span>
@@ -1001,7 +1002,7 @@ function Home({ onFeatureClick }: { onFeatureClick: (feature: FeatureType) => vo
   return (
     <div className="flex flex-col items-center justify-center min-h-full px-6 py-16">
       <h1 className="font-serif text-5xl font-bold text-primary mb-3 tracking-tight">Lovcode</h1>
-      <p className="text-muted text-lg mb-12">Your Vibe Coding Hub</p>
+      <p className="text-muted-foreground text-lg mb-12">Your Vibe Coding Hub</p>
 
       {stats && (
         <div className="flex gap-3 mb-12">
@@ -1015,7 +1016,7 @@ function Home({ onFeatureClick }: { onFeatureClick: (feature: FeatureType) => vo
               className="text-center px-6 py-4 bg-card rounded-2xl border border-border/60"
             >
               <p className="text-3xl font-semibold text-ink font-serif">{stat.value}</p>
-              <p className="text-xs text-muted uppercase tracking-wide mt-1">{stat.label}</p>
+              <p className="text-xs text-muted-foreground uppercase tracking-wide mt-1">{stat.label}</p>
             </div>
           ))}
         </div>
@@ -1033,11 +1034,11 @@ function Home({ onFeatureClick }: { onFeatureClick: (feature: FeatureType) => vo
             }`}
           >
             <span className="text-3xl mb-3">{feature.icon}</span>
-            <span className={`text-sm font-medium ${feature.available ? "text-ink" : "text-muted"}`}>
+            <span className={`text-sm font-medium ${feature.available ? "text-ink" : "text-muted-foreground"}`}>
               {feature.label}
             </span>
             {!feature.available && (
-              <span className="text-xs text-muted/70 mt-1.5 italic">Soon</span>
+              <span className="text-xs text-muted-foreground/70 mt-1.5 italic">Soon</span>
             )}
           </button>
         ))}
@@ -1095,7 +1096,7 @@ function SubAgentsView({
       )}
 
       {filtered.length === 0 && search && (
-        <p className="text-muted text-sm">No local sub-agents match "{search}"</p>
+        <p className="text-muted-foreground text-sm">No local sub-agents match "{search}"</p>
       )}
 
       <MarketplaceSection items={marketplaceItems} search={search} onSelect={onMarketplaceSelect} />
@@ -1172,7 +1173,7 @@ function DistillHelpButton() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="p-2 rounded-lg text-muted hover:text-ink hover:bg-card-alt transition-colors"
+        className="p-2 rounded-lg text-muted-foreground hover:text-ink hover:bg-card-alt transition-colors"
         title="How to use Distill"
       >
         <HelpCircle className="w-5 h-5" />
@@ -1185,7 +1186,7 @@ function DistillHelpButton() {
           </DialogHeader>
 
           <div className="space-y-4">
-            <div className="space-y-2 text-sm text-muted">
+            <div className="space-y-2 text-sm text-muted-foreground">
               <p>Distill captures wisdom from your Claude Code sessions into reusable knowledge.</p>
               <p className="font-medium text-ink">In Claude Code, run:</p>
               <code className="block px-3 py-2 rounded-lg bg-card-alt font-mono text-sm">/distill</code>
@@ -1199,14 +1200,14 @@ function DistillHelpButton() {
                   <div className="flex gap-1">
                     <button
                       onClick={handleCopy}
-                      className="p-1.5 rounded text-muted hover:text-ink hover:bg-card-alt transition-colors"
+                      className="p-1.5 rounded text-muted-foreground hover:text-ink hover:bg-card-alt transition-colors"
                       title="Copy to clipboard"
                     >
                       {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
                     </button>
                     <button
                       onClick={handleDownload}
-                      className="p-1.5 rounded text-muted hover:text-ink hover:bg-card-alt transition-colors"
+                      className="p-1.5 rounded text-muted-foreground hover:text-ink hover:bg-card-alt transition-colors"
                       title="Download file"
                     >
                       <Download className="w-4 h-4" />
@@ -1214,13 +1215,13 @@ function DistillHelpButton() {
                   </div>
                 </div>
                 <div className="max-h-[40vh] overflow-auto rounded-lg bg-card-alt p-3">
-                  <pre className="text-xs font-mono text-muted whitespace-pre-wrap">{commandContent}</pre>
+                  <pre className="text-xs font-mono text-muted-foreground whitespace-pre-wrap">{commandContent}</pre>
                 </div>
               </div>
             )}
 
             {commandContent === null && (
-              <p className="text-sm text-muted italic">Command file not found. Place distill.md in ~/.claude/commands/</p>
+              <p className="text-sm text-muted-foreground italic">Command file not found. Place distill.md in ~/.claude/commands/</p>
             )}
           </div>
         </DialogContent>
@@ -1279,7 +1280,7 @@ function DistillView({
           hint="Use /distill in Claude Code to capture wisdom"
         />
       ) : (
-        <p className="text-muted text-sm">No documents match "{search}"</p>
+        <p className="text-muted-foreground text-sm">No documents match "{search}"</p>
       )}
     </ConfigPage>
   );
@@ -1329,8 +1330,8 @@ function DistillDetailView({
       <div className="space-y-4">
         <DetailCard label="Metadata">
           <div className="space-y-2 text-sm">
-            <p className="text-muted">Date: <span className="text-ink">{document.date}</span></p>
-            <p className="text-muted">Session: <button onClick={handleNavigateSession} className="font-mono text-xs text-primary hover:underline">{document.session.slice(0, 8)}...</button></p>
+            <p className="text-muted-foreground">Date: <span className="text-ink">{document.date}</span></p>
+            <p className="text-muted-foreground">Session: <button onClick={handleNavigateSession} className="font-mono text-xs text-primary hover:underline">{document.session.slice(0, 8)}...</button></p>
           </div>
         </DetailCard>
         <ContentCard label="Content" content={content} />
@@ -1418,19 +1419,19 @@ function CommandsView({
           placeholder="Search local & marketplace..."
           value={search}
           onChange={setSearch}
-          className="flex-1 max-w-md px-4 py-2 bg-card border border-border rounded-lg text-ink placeholder:text-muted focus:outline-none focus:border-primary"
+          className="flex-1 max-w-md px-4 py-2 bg-card border border-border rounded-lg text-ink placeholder:text-muted-foreground focus:outline-none focus:border-primary"
         />
         <div className="flex items-center gap-1 text-xs shrink-0">
-          <span className="text-muted mr-1">Sort:</span>
+          <span className="text-muted-foreground mr-1">Sort:</span>
           <button
             onClick={() => toggleSort("usage")}
-            className={`px-2 py-1 rounded ${sortKey === "usage" ? "bg-primary/20 text-primary" : "text-muted hover:text-ink"}`}
+            className={`px-2 py-1 rounded ${sortKey === "usage" ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-ink"}`}
           >
             Usage {sortKey === "usage" && (sortDir === "desc" ? "↓" : "↑")}
           </button>
           <button
             onClick={() => toggleSort("name")}
-            className={`px-2 py-1 rounded ${sortKey === "name" ? "bg-primary/20 text-primary" : "text-muted hover:text-ink"}`}
+            className={`px-2 py-1 rounded ${sortKey === "name" ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-ink"}`}
           >
             Name {sortKey === "name" && (sortDir === "desc" ? "↓" : "↑")}
           </button>
@@ -1459,7 +1460,7 @@ function CommandsView({
       )}
 
       {filtered.length === 0 && search && (
-        <p className="text-muted text-sm">No local commands match "{search}"</p>
+        <p className="text-muted-foreground text-sm">No local commands match "{search}"</p>
       )}
 
       {/* Marketplace results */}
@@ -1572,7 +1573,7 @@ function McpView({
           mcpConfigPath && (
             <button
               onClick={() => invoke("open_in_editor", { path: mcpConfigPath })}
-              className="flex items-center gap-2 px-3 py-1.5 text-sm text-muted hover:text-ink hover:bg-card-alt rounded-lg transition-colors"
+              className="flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground hover:text-ink hover:bg-card-alt rounded-lg transition-colors"
               title={formatPath(mcpConfigPath)}
             >
               <span>Open .claude.json</span>
@@ -1593,20 +1594,20 @@ function McpView({
                     {getMcpUrl(server) && (
                       <button
                         onClick={() => openUrl(getMcpUrl(server)!)}
-                        className="text-muted hover:text-primary transition-colors"
+                        className="text-muted-foreground hover:text-primary transition-colors"
                         title="Open in npm"
                       >
                         <ExternalLink className="w-3.5 h-3.5" />
                       </button>
                     )}
                   </p>
-                  {server.description && <p className="text-sm text-muted mt-1">{server.description}</p>}
+                  {server.description && <p className="text-sm text-muted-foreground mt-1">{server.description}</p>}
                 </div>
               </div>
               <div className="bg-card-alt rounded-lg p-3 font-mono text-xs">
-                <p className="text-muted">
+                <p className="text-muted-foreground">
                   <span className="text-ink">{server.command}</span>
-                  {server.args.length > 0 && <span className="text-muted"> {server.args.join(" ")}</span>}
+                  {server.args.length > 0 && <span className="text-muted-foreground"> {server.args.join(" ")}</span>}
                 </p>
               </div>
               {Object.keys(server.env).length > 0 && (
@@ -1614,7 +1615,7 @@ function McpView({
                   {Object.entries(server.env).map(([key, value]) =>
                     editingEnv?.server === server.name && editingEnv?.key === key ? (
                       <div key={key} className="flex items-center gap-1">
-                        <span className="text-xs text-muted">{key}=</span>
+                        <span className="text-xs text-muted-foreground">{key}=</span>
                         <input
                           autoFocus
                           className="text-xs px-2 py-1 rounded bg-canvas border border-border text-ink w-40"
@@ -1650,7 +1651,7 @@ function McpView({
       )}
 
       {filtered.length === 0 && search && (
-        <p className="text-muted text-sm">No local MCP servers match "{search}"</p>
+        <p className="text-muted-foreground text-sm">No local MCP servers match "{search}"</p>
       )}
 
       <MarketplaceSection items={marketplaceItems} search={search} onSelect={onMarketplaceSelect} />
@@ -1701,7 +1702,7 @@ function SkillsView({
       )}
 
       {filtered.length === 0 && search && (
-        <p className="text-muted text-sm">No local skills match "{search}"</p>
+        <p className="text-muted-foreground text-sm">No local skills match "{search}"</p>
       )}
 
       <MarketplaceSection items={marketplaceItems} search={search} onSelect={onMarketplaceSelect} />
@@ -1783,7 +1784,7 @@ function HooksView({
       )}
 
       {filtered.length === 0 && search && (
-        <p className="text-muted text-sm">No local hooks match "{search}"</p>
+        <p className="text-muted-foreground text-sm">No local hooks match "{search}"</p>
       )}
 
       <MarketplaceSection items={marketplaceItems} search={search} onSelect={onMarketplaceSelect} />
@@ -1878,7 +1879,7 @@ function SettingsView({
       )}
 
       {search && filteredContextFiles.length === 0 && !settingsMatchSearch && (
-        <p className="text-muted text-sm">No local settings match "{search}"</p>
+        <p className="text-muted-foreground text-sm">No local settings match "{search}"</p>
       )}
 
       <MarketplaceSection items={marketplaceItems} search={search} onSelect={onMarketplaceSelect} />
@@ -1930,7 +1931,7 @@ function MarketplaceView({
       <div className="flex flex-col items-center justify-center h-full px-6">
         <span className="text-4xl mb-4">❌</span>
         <p className="text-ink font-medium mb-2">Failed to load templates</p>
-        <p className="text-sm text-muted text-center max-w-md">{error}</p>
+        <p className="text-sm text-muted-foreground text-center max-w-md">{error}</p>
       </div>
     );
   }
@@ -1960,7 +1961,7 @@ function MarketplaceView({
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm whitespace-nowrap transition-colors ${
                 activeCategory === cat.key
                   ? "bg-primary text-primary-foreground"
-                  : "bg-card-alt text-muted hover:text-ink"
+                  : "bg-card-alt text-muted-foreground hover:text-ink"
               }`}
             >
               <span>{cat.icon}</span>
@@ -1988,11 +1989,11 @@ function MarketplaceView({
             <div className="flex items-start justify-between gap-2 mb-2">
               <p className="font-medium text-ink truncate">{template.name}</p>
               {template.downloads != null && (
-                <span className="text-xs text-muted shrink-0">↓{template.downloads}</span>
+                <span className="text-xs text-muted-foreground shrink-0">↓{template.downloads}</span>
               )}
             </div>
-            {template.description && <p className="text-sm text-muted line-clamp-2">{template.description}</p>}
-            <p className="text-xs text-muted/60 mt-2">{template.category}</p>
+            {template.description && <p className="text-sm text-muted-foreground line-clamp-2">{template.description}</p>}
+            <p className="text-xs text-muted-foreground/60 mt-2">{template.category}</p>
           </button>
         ))}
       </div>
@@ -2057,16 +2058,16 @@ function TemplateDetailView({
       <header className="mb-6">
         <button
           onClick={onBack}
-          className="text-muted hover:text-ink mb-2 flex items-center gap-1 text-sm"
+          className="text-muted-foreground hover:text-ink mb-2 flex items-center gap-1 text-sm"
         >
           <span>←</span> {categoryInfo?.label}
         </button>
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold text-ink">{template.name}</h1>
-            {template.description && <p className="text-muted mt-2">{template.description}</p>}
-            <p className="font-mono text-xs text-muted mt-2">{template.path}</p>
-            <div className="flex items-center gap-3 mt-2 text-sm text-muted">
+            {template.description && <p className="text-muted-foreground mt-2">{template.description}</p>}
+            <p className="font-mono text-xs text-muted-foreground mt-2">{template.path}</p>
+            <div className="flex items-center gap-3 mt-2 text-sm text-muted-foreground">
               <span>{categoryInfo?.icon} {categoryInfo?.label}</span>
               <span>•</span>
               <span>{template.category}</span>
@@ -2085,7 +2086,7 @@ function TemplateDetailView({
               installed
                 ? "bg-green-500/20 text-green-600"
                 : installing
-                  ? "bg-card-alt text-muted"
+                  ? "bg-card-alt text-muted-foreground"
                   : "bg-primary text-primary-foreground hover:bg-primary/90"
             }`}
           >
@@ -2127,10 +2128,10 @@ function FeatureTodo({ feature }: { feature: FeatureType }) {
       <h1 className="font-serif text-2xl font-semibold text-ink mb-2">
         {feat?.label}
       </h1>
-      <p className="text-muted text-center max-w-md mb-6">
+      <p className="text-muted-foreground text-center max-w-md mb-6">
         {feat?.description}
       </p>
-      <div className="px-4 py-2 rounded-lg bg-card-alt text-muted text-sm">
+      <div className="px-4 py-2 rounded-lg bg-card-alt text-muted-foreground text-sm">
         Coming soon
       </div>
     </div>
@@ -2278,7 +2279,7 @@ function ProjectList({
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <p className="text-muted">Loading {viewMode}...</p>
+        <p className="text-muted-foreground">Loading {viewMode}...</p>
       </div>
     );
   }
@@ -2287,7 +2288,7 @@ function ProjectList({
     <div className="px-6 py-8">
       <header className="mb-6">
         <h1 className="font-serif text-3xl font-semibold text-ink">History</h1>
-        <p className="text-muted mt-1">
+        <p className="text-muted-foreground mt-1">
           {viewMode === "projects"
             ? `${(projects || []).length} projects with Claude Code history`
             : viewMode === "sessions"
@@ -2303,7 +2304,7 @@ function ProjectList({
           className={`px-4 py-2 text-sm font-medium transition-colors ${
             viewMode === "projects"
               ? "text-primary border-b-2 border-primary -mb-px"
-              : "text-muted hover:text-ink"
+              : "text-muted-foreground hover:text-ink"
           }`}
         >
           📁 Projects
@@ -2313,7 +2314,7 @@ function ProjectList({
           className={`px-4 py-2 text-sm font-medium transition-colors ${
             viewMode === "sessions"
               ? "text-primary border-b-2 border-primary -mb-px"
-              : "text-muted hover:text-ink"
+              : "text-muted-foreground hover:text-ink"
           }`}
         >
           💬 Sessions
@@ -2323,7 +2324,7 @@ function ProjectList({
           className={`px-4 py-2 text-sm font-medium transition-colors ${
             viewMode === "chats"
               ? "text-primary border-b-2 border-primary -mb-px"
-              : "text-muted hover:text-ink"
+              : "text-muted-foreground hover:text-ink"
           }`}
         >
           🗨️ Chats
@@ -2345,7 +2346,7 @@ function ProjectList({
                 className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
                   sortBy === key
                     ? "bg-primary text-primary-foreground"
-                    : "bg-card-alt text-muted hover:text-ink"
+                    : "bg-card-alt text-muted-foreground hover:text-ink"
                 }`}
               >
                 {label}
@@ -2353,7 +2354,7 @@ function ProjectList({
             ))}
           </div>
           {viewMode === "sessions" && (
-            <label className="flex items-center gap-2 text-xs text-muted cursor-pointer">
+            <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
               <Switch checked={hideEmptySessions} onCheckedChange={setHideEmptySessions} />
               <span>Hide empty</span>
             </label>
@@ -2371,26 +2372,26 @@ function ProjectList({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search messages..."
-                className="w-full px-3 py-2 pr-8 rounded-lg bg-card border border-border text-ink placeholder:text-muted focus:outline-none focus:border-primary"
+                className="w-full px-3 py-2 pr-8 rounded-lg bg-card border border-border text-ink placeholder:text-muted-foreground focus:outline-none focus:border-primary"
               />
               {searching && (
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted text-sm">...</span>
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">...</span>
               )}
             </div>
             <button
               onClick={handleBuildIndex}
               disabled={indexBuilding}
-              className="px-3 py-2 rounded-lg bg-card-alt text-muted hover:text-ink border border-border transition-colors disabled:opacity-50"
+              className="px-3 py-2 rounded-lg bg-card-alt text-muted-foreground hover:text-ink border border-border transition-colors disabled:opacity-50"
               title="Build search index"
             >
               {indexBuilding ? "Building..." : "🔄 Index"}
             </button>
           </div>
           {indexStatus && (
-            <p className="text-xs text-muted">{indexStatus}</p>
+            <p className="text-xs text-muted-foreground">{indexStatus}</p>
           )}
           {searchQuery.trim() && searchResults !== null && (
-            <p className="text-xs text-muted">
+            <p className="text-xs text-muted-foreground">
               {searchResults.length} result{searchResults.length !== 1 ? "s" : ""} found
             </p>
           )}
@@ -2407,7 +2408,7 @@ function ProjectList({
               className="w-full text-left bg-card rounded-xl p-4 border border-border hover:border-primary transition-colors"
             >
               <p className="font-medium text-ink truncate">{formatPath(project.path)}</p>
-              <p className="text-sm text-muted mt-1">
+              <p className="text-sm text-muted-foreground mt-1">
                 {project.session_count} session{project.session_count !== 1 ? "s" : ""} · {formatRelativeTime(project.last_active)}
               </p>
             </button>
@@ -2422,10 +2423,10 @@ function ProjectList({
               <p className="font-medium text-ink line-clamp-2">
                 {session.summary || "Untitled session"}
               </p>
-              <p className="text-sm text-muted mt-1 truncate">
+              <p className="text-sm text-muted-foreground mt-1 truncate">
                 {session.project_path ? formatPath(session.project_path) : session.project_id}
               </p>
-              <p className="text-xs text-muted mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 {session.message_count} messages · {formatRelativeTime(session.last_modified)}
               </p>
             </button>
@@ -2440,21 +2441,21 @@ function ProjectList({
             >
               <div className="flex items-center gap-2 mb-1">
                 <span className={`text-xs px-1.5 py-0.5 rounded ${
-                  chat.role === "user" ? "bg-primary/15 text-primary" : "bg-card-alt text-muted"
+                  chat.role === "user" ? "bg-primary/15 text-primary" : "bg-card-alt text-muted-foreground"
                 }`}>
                   {chat.role}
                 </span>
-                <span className="text-xs text-muted">
+                <span className="text-xs text-muted-foreground">
                   {chat.timestamp ? new Date(chat.timestamp).toLocaleString() : ""}
                 </span>
                 {"score" in chat && (
-                  <span className="text-xs text-muted">
+                  <span className="text-xs text-muted-foreground">
                     · score: {(chat as SearchResult).score.toFixed(2)}
                   </span>
                 )}
               </div>
               <p className="text-ink line-clamp-2">{chat.content}</p>
-              <p className="text-xs text-muted mt-2 truncate">
+              <p className="text-xs text-muted-foreground mt-2 truncate">
                 {formatPath(chat.project_path)} · {chat.session_summary || "Untitled"}
               </p>
             </button>
@@ -2580,7 +2581,7 @@ generator: "Lovcode"
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <p className="text-muted">Loading project...</p>
+        <p className="text-muted-foreground">Loading project...</p>
       </div>
     );
   }
@@ -2590,7 +2591,7 @@ generator: "Lovcode"
       <header className="mb-6">
         <button
           onClick={onBack}
-          className="text-muted hover:text-ink mb-2 flex items-center gap-1 text-sm"
+          className="text-muted-foreground hover:text-ink mb-2 flex items-center gap-1 text-sm"
         >
           <span>←</span> Projects
         </button>
@@ -2609,7 +2610,7 @@ generator: "Lovcode"
               className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
                 contextTab === "project"
                   ? "text-primary border-b-2 border-primary -mb-px"
-                  : "text-muted hover:text-ink"
+                  : "text-muted-foreground hover:text-ink"
               }`}
             >
               📁 Project ({projectContext.length})
@@ -2619,7 +2620,7 @@ generator: "Lovcode"
               className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
                 contextTab === "global"
                   ? "text-primary border-b-2 border-primary -mb-px"
-                  : "text-muted hover:text-ink"
+                  : "text-muted-foreground hover:text-ink"
               }`}
             >
               🌐 Global ({globalContext.length})
@@ -2632,7 +2633,7 @@ generator: "Lovcode"
               <ContextFileItem key={file.path} file={file} showIcon />
             ))}
             {(contextTab === "global" ? globalContext : projectContext).length === 0 && (
-              <p className="text-sm text-muted text-center py-4">No context files</p>
+              <p className="text-sm text-muted-foreground text-center py-4">No context files</p>
             )}
           </div>
         </div>
@@ -2640,15 +2641,15 @@ generator: "Lovcode"
 
       {/* Sessions Header */}
       <div className="mb-4 flex items-center justify-between">
-        <p className="text-xs text-muted uppercase tracking-wide">
+        <p className="text-xs text-muted-foreground uppercase tracking-wide">
           💬 Sessions ({hideEmptySessions ? `${filteredSessions.length}/${sessions.length}` : sessions.length})
         </p>
         <div className="flex items-center gap-2">
-          <label className="flex items-center gap-2 text-xs text-muted cursor-pointer">
+          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
             <Switch checked={hideEmptySessions} onCheckedChange={setHideEmptySessions} />
             <span>Hide empty</span>
           </label>
-          <label className="flex items-center gap-2 text-xs text-muted cursor-pointer">
+          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
             <Switch checked={selectMode} onCheckedChange={(v) => { setSelectMode(v); if (!v) deselectAll(); }} />
             <span>Select</span>
           </label>
@@ -2656,13 +2657,13 @@ generator: "Lovcode"
             <>
               <button
                 onClick={selectedIds.size === filteredSessions.length ? deselectAll : selectAll}
-                className="text-xs px-2 py-1 rounded bg-card-alt hover:bg-border text-muted hover:text-ink transition-colors"
+                className="text-xs px-2 py-1 rounded bg-card-alt hover:bg-border text-muted-foreground hover:text-ink transition-colors"
               >
                 {selectedIds.size === filteredSessions.length ? "Deselect All" : "Select All"}
               </button>
               {selectedIds.size > 0 && (
                 <>
-                  <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer">
+                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
                     <input
                       type="checkbox"
                       checked={userPromptsOnly}
@@ -2701,7 +2702,7 @@ generator: "Lovcode"
                   <p className="font-medium text-ink line-clamp-2">
                     {session.summary || "Untitled session"}
                   </p>
-                  <p className="text-sm text-muted mt-2">
+                  <p className="text-sm text-muted-foreground mt-2">
                     {session.message_count} messages · {formatDate(session.last_modified)}
                   </p>
                 </div>
@@ -2865,45 +2866,48 @@ function ExportDialog({ open, onOpenChange, allMessages, selectedIds, onSelected
         </DialogHeader>
 
         <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 py-2 border-b border-border items-center">
-          <Label className="text-sm text-muted">Select</Label>
-          <select
-            value={selectPreset}
-            onChange={(e) => setSelectPreset(e.target.value as "all" | "user" | "custom")}
-            className="text-sm px-2 py-1 rounded bg-card-alt border border-border text-ink w-fit"
-          >
-            <option value="all">All ({allMessages.length})</option>
-            <option value="user">User only ({allMessages.filter(m => m.role === "user").length})</option>
-            <option value="custom">Custom ({selectedIds.size})</option>
-          </select>
+          <Label className="text-sm text-muted-foreground-foreground">Select</Label>
+          <Select value={selectPreset} onValueChange={(v) => setSelectPreset(v as "all" | "user" | "custom")}>
+            <SelectTrigger size="sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All ({allMessages.length})</SelectItem>
+              <SelectItem value="user">User only ({allMessages.filter(m => m.role === "user").length})</SelectItem>
+              <SelectItem value="custom">Custom ({selectedIds.size})</SelectItem>
+            </SelectContent>
+          </Select>
 
-          <Label className="text-sm text-muted">Format</Label>
-          <select
-            value={format}
-            onChange={(e) => setFormat(e.target.value as ExportFormat)}
-            className="text-sm px-2 py-1 rounded bg-card-alt border border-border text-ink w-fit"
-          >
-            <option value="markdown">Markdown</option>
-            <option value="json">JSON</option>
-          </select>
+          <Label className="text-sm text-muted-foreground-foreground">Format</Label>
+          <Select value={format} onValueChange={(v) => setFormat(v as ExportFormat)}>
+            <SelectTrigger size="sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="markdown">Markdown</SelectItem>
+              <SelectItem value="json">JSON</SelectItem>
+            </SelectContent>
+          </Select>
 
           {format === "markdown" && (
             <>
-              <Label className="text-sm text-muted">Style</Label>
-              <select
-                value={mdStyle}
-                onChange={(e) => setMdStyle(e.target.value as MarkdownStyle)}
-                className="text-sm px-2 py-1 rounded bg-card-alt border border-border text-ink w-fit"
-              >
-                <option value="full">Full</option>
-                <option value="qa">QA</option>
-                <option value="bullet">QA (list)</option>
-              </select>
+              <Label className="text-sm text-muted-foreground-foreground">Style</Label>
+              <Select value={mdStyle} onValueChange={(v) => setMdStyle(v as MarkdownStyle)}>
+                <SelectTrigger size="sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="full">Full</SelectItem>
+                  <SelectItem value="qa">QA</SelectItem>
+                  <SelectItem value="bullet">QA (list)</SelectItem>
+                </SelectContent>
+              </Select>
             </>
           )}
 
-          <Label className="text-sm text-muted">Options</Label>
+          <Label className="text-sm text-muted-foreground">Options</Label>
           <div className="flex gap-4 flex-wrap">
-            <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
+            <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
               <input
                 type="checkbox"
                 checked={exportOriginal}
@@ -2915,7 +2919,7 @@ function ExportDialog({ open, onOpenChange, allMessages, selectedIds, onSelected
 
             {format === "markdown" && (
               <>
-                <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
+                <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
                   <input
                     type="checkbox"
                     checked={truncateBullet}
@@ -2924,7 +2928,7 @@ function ExportDialog({ open, onOpenChange, allMessages, selectedIds, onSelected
                   />
                   <span>Truncate</span>
                 </label>
-                <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
+                <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
                   <input
                     type="checkbox"
                     checked={addSeparator}
@@ -2933,7 +2937,7 @@ function ExportDialog({ open, onOpenChange, allMessages, selectedIds, onSelected
                   />
                   <span>Separator</span>
                 </label>
-                <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
+                <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
                   <input
                     type="checkbox"
                     checked={addWatermark}
@@ -2946,7 +2950,7 @@ function ExportDialog({ open, onOpenChange, allMessages, selectedIds, onSelected
             )}
 
             {format === "json" && (
-              <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
+              <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
                 <input
                   type="checkbox"
                   checked={jsonPretty}
@@ -2960,7 +2964,7 @@ function ExportDialog({ open, onOpenChange, allMessages, selectedIds, onSelected
         </div>
 
         <div className="flex-1 flex flex-col min-h-[200px] overflow-hidden mt-4">
-          <div className="text-xs text-muted mb-2 shrink-0">Preview</div>
+          <div className="text-xs text-muted-foreground-foreground mb-2 shrink-0">Preview</div>
           <div className="flex-1 bg-card-alt rounded-lg p-4 text-sm text-ink overflow-auto font-mono whitespace-pre-wrap break-all">
             {preview}
           </div>
@@ -3018,7 +3022,7 @@ function MessageView({
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <p className="text-muted">Loading messages...</p>
+        <p className="text-muted-foreground">Loading messages...</p>
       </div>
     );
   }
@@ -3028,7 +3032,7 @@ function MessageView({
       <header className="mb-8">
         <button
           onClick={onBack}
-          className="text-muted hover:text-ink flex items-center gap-1 text-sm mb-4"
+          className="text-muted-foreground-foreground hover:text-foreground flex items-center gap-1 text-sm mb-4"
         >
           <span>←</span> Sessions
         </button>
@@ -3073,7 +3077,7 @@ function MessageView({
           </ContextMenu>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="text-muted hover:text-ink transition-colors p-1 rounded hover:bg-card-alt shrink-0">
+              <button className="text-muted-foreground-foreground p-1 rounded hover:bg-card-alt shrink-0">
                 <MoreHorizontal size={18} />
               </button>
             </DropdownMenuTrigger>
@@ -3122,7 +3126,7 @@ function MessageView({
               }`}
             >
               <CopyButton text={displayContent} />
-              <p className="text-xs text-muted mb-2 uppercase tracking-wide">
+              <p className="text-xs text-muted-foreground-foreground mb-2 uppercase tracking-wide">
                 {msg.role}
               </p>
               <CollapsibleContent content={displayContent} markdown={markdownPreview} />
@@ -3205,7 +3209,7 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="absolute top-3 right-3 p-1.5 rounded-md bg-card-alt/80 hover:bg-card-alt text-muted hover:text-ink transition-opacity opacity-0 group-hover:opacity-100"
+      className="absolute top-3 right-3 p-1.5 rounded-md bg-card-alt/80 hover:bg-card-alt text-muted-foreground hover:text-ink transition-opacity opacity-0 group-hover:opacity-100"
       title="Copy"
     >
       {copied ? (

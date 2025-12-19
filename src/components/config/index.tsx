@@ -10,7 +10,7 @@ import { useAppConfig } from "../../App";
 export function LoadingState({ message }: { message: string }) {
   return (
     <div className="flex items-center justify-center h-full">
-      <p className="text-muted">{message}</p>
+      <p className="text-muted-foreground">{message}</p>
     </div>
   );
 }
@@ -27,8 +27,8 @@ export function EmptyState({
   return (
     <div className="text-center py-12">
       <span className="text-4xl mb-4 block">{icon}</span>
-      <p className="text-muted">{message}</p>
-      {hint && <p className="text-sm text-muted mt-1">{hint}</p>}
+      <p className="text-muted-foreground">{message}</p>
+      {hint && <p className="text-sm text-muted-foreground mt-1">{hint}</p>}
     </div>
   );
 }
@@ -50,7 +50,7 @@ export function SearchInput({
       placeholder={placeholder}
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className={className ?? "w-full max-w-md mb-6 px-4 py-2 bg-card border border-border rounded-lg text-ink placeholder:text-muted focus:outline-none focus:border-primary"}
+      className={className ?? "w-full max-w-md mb-6 px-4 py-2 bg-card border border-border rounded-lg text-ink placeholder:text-muted-foreground focus:outline-none focus:border-primary"}
     />
   );
 }
@@ -69,7 +69,7 @@ export function PageHeader({
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="font-serif text-3xl font-semibold text-ink">{title}</h1>
-          <p className="text-muted mt-1">{subtitle}</p>
+          <p className="text-muted-foreground mt-1">{subtitle}</p>
         </div>
         {action}
       </div>
@@ -99,7 +99,7 @@ export function DetailHeader({
     <header className="mb-6">
       <button
         onClick={onBack}
-        className="text-muted hover:text-ink mb-2 flex items-center gap-1 text-sm"
+        className="text-muted-foreground hover:text-ink mb-2 flex items-center gap-1 text-sm"
       >
         <span>←</span> {backLabel}
       </button>
@@ -108,7 +108,7 @@ export function DetailHeader({
         {path && (
           <button
             onClick={() => onOpenPath?.(path)}
-            className="text-muted hover:text-primary"
+            className="text-muted-foreground hover:text-primary"
             title={formatPath(path)}
           >
             <ExternalLink className="w-4 h-4" />
@@ -117,14 +117,14 @@ export function DetailHeader({
         {onNavigateSession && (
           <button
             onClick={onNavigateSession}
-            className="text-muted hover:text-primary"
+            className="text-muted-foreground hover:text-primary"
             title="Go to session"
           >
             <MessageCircle className="w-4 h-4" />
           </button>
         )}
       </div>
-      {description && <p className="text-muted mt-2">{description}</p>}
+      {description && <p className="text-muted-foreground mt-2">{description}</p>}
     </header>
   );
 }
@@ -147,7 +147,7 @@ export function ItemCard({
   const badgeClass =
     badgeVariant === "accent"
       ? "bg-accent/20 text-accent"
-      : "bg-card-alt text-muted";
+      : "bg-card-alt text-muted-foreground";
 
   return (
     <button
@@ -159,13 +159,13 @@ export function ItemCard({
           <div className="flex items-center gap-2">
             <p className="font-mono font-medium text-primary">{name}</p>
             {usageCount !== undefined && usageCount > 0 && (
-              <span className="text-xs text-muted" title={`Used ${usageCount} times`}>
+              <span className="text-xs text-muted-foreground" title={`Used ${usageCount} times`}>
                 ×{usageCount}
               </span>
             )}
           </div>
           {description && (
-            <p className="text-sm text-muted mt-1 line-clamp-2">{description}</p>
+            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{description}</p>
           )}
         </div>
         {badge && (
@@ -191,7 +191,7 @@ export function DetailCard({
 
   return (
     <div className={`rounded-xl p-4 ${bgClass}`}>
-      <p className="text-xs text-muted uppercase tracking-wide mb-1">{label}</p>
+      <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">{label}</p>
       {children}
     </div>
   );
@@ -295,7 +295,7 @@ export function MarketplaceSection({
 
   return (
     <div className="mt-8 pt-6 border-t border-border">
-      <p className="text-xs text-muted uppercase tracking-wide mb-3">
+      <p className="text-xs text-muted-foreground uppercase tracking-wide mb-3">
         From Marketplace ({filtered.length})
       </p>
       <div className="space-y-2">
@@ -310,11 +310,11 @@ export function MarketplaceSection({
                 <div className="flex items-center gap-2">
                   <p className="font-mono font-medium text-ink">{item.name}</p>
                   {item.downloads != null && (
-                    <span className="text-xs text-muted">↓{item.downloads}</span>
+                    <span className="text-xs text-muted-foreground">↓{item.downloads}</span>
                   )}
                 </div>
                 {item.description && (
-                  <p className="text-sm text-muted mt-1 line-clamp-2">{item.description}</p>
+                  <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{item.description}</p>
                 )}
               </div>
               <Download className="w-4 h-4 text-primary shrink-0" />
@@ -322,7 +322,7 @@ export function MarketplaceSection({
           </button>
         ))}
         {filtered.length > 5 && (
-          <p className="text-xs text-muted text-center py-2">
+          <p className="text-xs text-muted-foreground text-center py-2">
             +{filtered.length - 5} more in Marketplace
           </p>
         )}

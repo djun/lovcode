@@ -7,7 +7,7 @@ import { useAppConfig } from "../App";
 
 function ChevronIcon() {
   const { open } = useCollapsible();
-  return <span className="text-xs text-muted">{open ? "▼" : "▶"}</span>;
+  return <span className="text-xs text-muted-foreground">{open ? "▼" : "▶"}</span>;
 }
 
 // ============================================================================
@@ -40,17 +40,17 @@ export function CollapsibleItem({ name, path, content, variant = "card-alt", ren
       <CollapsibleTrigger className={`flex items-center gap-2 px-3 py-1.5 w-full ${hoverClass}`}>
         <ChevronIcon />
         <span className="text-sm text-ink shrink-0">{name}</span>
-        <span className="flex-1 font-mono text-xs text-muted truncate text-left">{formatPath(path)}</span>
+        <span className="flex-1 font-mono text-xs text-muted-foreground truncate text-left">{formatPath(path)}</span>
         <button
           onClick={handleCopy}
-          className="text-muted hover:text-primary shrink-0"
+          className="text-muted-foreground hover:text-primary shrink-0"
           title="Copy content"
         >
           {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
         </button>
         <button
           onClick={(e) => { e.stopPropagation(); invoke("open_in_editor", { path }); }}
-          className="text-muted hover:text-primary shrink-0"
+          className="text-muted-foreground hover:text-primary shrink-0"
           title={formatPath(path)}
         >
           <ExternalLink className="w-3.5 h-3.5" />
