@@ -1957,6 +1957,9 @@ function CommandItemCard({
               </span>
             )}
           </div>
+          {!isInactive && command.argument_hint && (
+            <p className="text-xs text-muted-foreground mt-0.5 font-mono">{command.argument_hint}</p>
+          )}
           {command.description && (
             <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{command.description}</p>
           )}
@@ -1966,7 +1969,7 @@ function CommandItemCard({
             </p>
           )}
         </button>
-        <div className="flex items-start gap-2 shrink-0">
+        <div className="flex items-start gap-2">
           <div className="flex flex-col items-end gap-1">
             {isDeprecated && (
               <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-600">
@@ -1976,11 +1979,6 @@ function CommandItemCard({
             {isArchived && (
               <span className="text-xs px-2 py-0.5 rounded bg-card-alt text-muted-foreground">
                 archived
-              </span>
-            )}
-            {!isInactive && command.argument_hint && (
-              <span className="text-xs px-2 py-0.5 rounded bg-card-alt text-muted-foreground">
-                {command.argument_hint}
               </span>
             )}
           </div>
