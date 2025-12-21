@@ -220,7 +220,7 @@ interface DistillDocument {
   file: string;
   title: string;
   tags: string[];
-  session: string;
+  session: string | null;
 }
 
 interface McpServer {
@@ -1483,6 +1483,7 @@ function DistillDetailView({
   }, [document.file]);
 
   const handleNavigateSession = async () => {
+    if (!document.session) return;
     const session = await invoke<Session | null>("find_session_project", { sessionId: document.session });
     if (session) {
       onNavigateSession(session.project_id, session.id, session.summary);
@@ -1508,7 +1509,11 @@ function DistillDetailView({
         <DetailCard label="Metadata">
           <div className="space-y-2 text-sm">
             <p className="text-muted-foreground">Date: <span className="text-ink">{document.date}</span></p>
-            <p className="text-muted-foreground">Session: <button onClick={handleNavigateSession} className="font-mono text-xs text-primary hover:underline">{document.session.slice(0, 8)}...</button></p>
+            {document.session ? (
+              <p className="text-muted-foreground">Session: <button onClick={handleNavigateSession} className="font-mono text-xs text-primary hover:underline">{document.session.slice(0, 8)}...</button></p>
+            ) : (
+              <p className="text-muted-foreground">Session: <span className="text-xs text-muted-foreground italic">N/A</span></p>
+            )}
           </div>
         </DetailCard>
         <ContentCard label="Content" content={content} />

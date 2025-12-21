@@ -1499,8 +1499,10 @@ pub struct DistillDocument {
     pub date: String,
     pub file: String,
     pub title: String,
+    #[serde(default)]
     pub tags: Vec<String>,
-    pub session: String,
+    #[serde(default)]
+    pub session: Option<String>,
 }
 
 fn get_distill_dir() -> PathBuf {
