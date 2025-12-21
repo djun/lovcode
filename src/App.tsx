@@ -40,6 +40,7 @@ import { ContextFileItem, ConfigFileItem } from "./components/ContextFileItem";
 import { DocumentReader } from "./components/DocumentReader";
 import { invoke } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { LogicalPosition } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
 import {
@@ -407,6 +408,19 @@ function App() {
         await floatWin.hide();
         setFloatWindowVisible(false);
       } else {
+        // 重置到屏幕右下角
+        const screenWidth = window.screen.availWidth;
+        const screenHeight = window.screen.availHeight;
+        const screenLeft = window.screen.availLeft ?? 0;
+        const screenTop = window.screen.availTop ?? 0;
+        const size = await floatWin.outerSize();
+        const scale = window.devicePixelRatio;
+        const winWidth = size.width / scale;
+        const winHeight = size.height / scale;
+        await floatWin.setPosition(new LogicalPosition(
+          screenLeft + screenWidth - winWidth - 20,
+          screenTop + screenHeight - winHeight - 20
+        ));
         await floatWin.show();
         setFloatWindowVisible(true);
       }

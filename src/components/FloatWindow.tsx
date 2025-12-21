@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { ClipboardList, X, GripVertical } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
-import { getCurrentWindow, currentMonitor, LogicalSize, LogicalPosition } from "@tauri-apps/api/window";
+import { getCurrentWindow, LogicalSize, LogicalPosition } from "@tauri-apps/api/window";
 import { motion, AnimatePresence } from "framer-motion";
 
 // ============================================================================
@@ -33,39 +33,40 @@ export function FloatWindow() {
   // 磁吸到边缘
   const snapToEdge = async () => {
     const win = getCurrentWindow();
-    const monitor = await currentMonitor();
-    if (!monitor) return;
-
     const pos = await win.outerPosition();
     const size = await win.outerSize();
-    const scaleFactor = monitor.scaleFactor;
+    const scale = window.devicePixelRatio;
 
-    const screenWidth = monitor.size.width / scaleFactor;
-    const screenHeight = monitor.size.height / scaleFactor;
-    const windowX = pos.x / scaleFactor;
-    const windowY = pos.y / scaleFactor;
-    const windowWidth = size.width / scaleFactor;
-    const windowHeight = size.height / scaleFactor;
+    // 转换为逻辑坐标
+    const windowX = pos.x / scale;
+    const windowY = pos.y / scale;
+    const windowWidth = size.width / scale;
+
+    // 使用 Web API 获取可用屏幕区域（排除菜单栏和 Dock）
+    const screenLeft = window.screen.availLeft ?? 0;
+    const screenWidth = window.screen.availWidth;
+
+    // 相对于可用区域的位置
+    const relativeX = windowX - screenLeft;
 
     let newX = windowX;
-    let newY = windowY;
     let snappedSide: "left" | "right" | null = null;
 
     // 左边磁吸
-    if (windowX < SNAP_THRESHOLD) {
-      newX = 0;
+    if (relativeX < SNAP_THRESHOLD) {
+      newX = screenLeft;
       snappedSide = "left";
     }
     // 右边磁吸
-    else if (screenWidth - (windowX + windowWidth) < SNAP_THRESHOLD) {
-      newX = screenWidth - windowWidth;
+    else if (screenWidth - relativeX - windowWidth < SNAP_THRESHOLD) {
+      newX = screenLeft + screenWidth - windowWidth;
       snappedSide = "right";
     }
 
     setSnapSide(snappedSide);
 
     if (snappedSide !== null) {
-      await win.setPosition(new LogicalPosition(newX, newY));
+      await win.setPosition(new LogicalPosition(newX, windowY));
     }
   };
 
@@ -153,28 +154,27 @@ export function FloatWindow() {
       if (!isDragging) {
         const win = getCurrentWindow();
         const pos = await win.outerPosition();
-        const monitor = await currentMonitor();
 
         const expandedWidth = 280;
         const expandedHeight = 320;
         const collapsedHeight = 48;
         const collapsedWidth = getCollapsedWidth();
 
+        const scale = window.devicePixelRatio;
+        const windowX = pos.x / scale;
+        const windowY = pos.y / scale;
+
         if (!isExpanded) {
           // 展开：先调整窗口大小，再改状态（避免圆角突变）
-          if (monitor) {
-            const scaleFactor = monitor.scaleFactor;
-            const screenWidth = monitor.size.width / scaleFactor;
-            const windowX = pos.x / scaleFactor;
-            const windowY = pos.y / scaleFactor;
+          const screenLeft = window.screen.availLeft ?? 0;
+          const screenWidth = window.screen.availWidth;
 
-            if (windowX + expandedWidth > screenWidth) {
-              setExpandDirection("left");
-              const newX = windowX - (expandedWidth - collapsedWidth);
-              await win.setPosition(new LogicalPosition(Math.max(0, newX), windowY));
-            } else {
-              setExpandDirection("right");
-            }
+          if (windowX + expandedWidth > screenLeft + screenWidth) {
+            setExpandDirection("left");
+            const newX = windowX - (expandedWidth - collapsedWidth);
+            await win.setPosition(new LogicalPosition(Math.max(screenLeft, newX), windowY));
+          } else {
+            setExpandDirection("right");
           }
           await win.setSize(new LogicalSize(expandedWidth, expandedHeight));
           setIsExpanded(true);
@@ -182,9 +182,6 @@ export function FloatWindow() {
           // 收起：先改状态，再调整窗口大小
           setIsExpanded(false);
           if (expandDirection === "left") {
-            const scaleFactor = monitor?.scaleFactor || 1;
-            const windowX = pos.x / scaleFactor;
-            const windowY = pos.y / scaleFactor;
             await win.setPosition(new LogicalPosition(windowX + (expandedWidth - collapsedWidth), windowY));
           }
           await win.setSize(new LogicalSize(collapsedWidth, collapsedHeight));
