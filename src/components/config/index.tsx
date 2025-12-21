@@ -282,17 +282,22 @@ export function ItemCard({
 export function DetailCard({
   label,
   variant = "default",
+  action,
   children,
 }: {
   label: string;
   variant?: "default" | "alt";
+  action?: ReactNode;
   children: ReactNode;
 }) {
   const bgClass = variant === "default" ? "bg-card border border-border" : "bg-card-alt";
 
   return (
     <div className={`rounded-xl p-4 ${bgClass} relative`}>
-      <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">{label}</p>
+      <div className="flex items-center justify-between mb-1">
+        <p className="text-xs text-muted-foreground uppercase tracking-wide">{label}</p>
+        {action}
+      </div>
       {children}
     </div>
   );

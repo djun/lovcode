@@ -28,4 +28,5 @@ regex = "1"
 tantivy = "0.22"
 jieba-rs = "0.7"
 notify = "7"
+chrono = "0.4"
 

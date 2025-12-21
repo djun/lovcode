@@ -196,6 +196,7 @@ interface LocalCommand {
   status: "active" | "deprecated" | "archived";
   deprecated_by: string | null;
   changelog: string | null;
+  aliases: string[];
 }
 
 interface LocalAgent {
@@ -1792,6 +1793,16 @@ function CommandsView({
   const [deprecationNote, setDeprecationNote] = useState("");
   const { search, setSearch, filtered } = useSearch(commands, ["name", "description"]);
 
+  // Calculate usage count including aliases
+  const getUsageCount = (cmd: LocalCommand) => {
+    const mainCount = commandStats[cmd.name.slice(1)] || 0;
+    const aliasCount = cmd.aliases.reduce((sum, alias) => {
+      const key = alias.startsWith('/') ? alias.slice(1) : alias;
+      return sum + (commandStats[key] || 0);
+    }, 0);
+    return mainCount + aliasCount;
+  };
+
   const refreshCommands = () => {
     invoke<LocalCommand[]>("list_local_commands").then(setCommands);
   };
@@ -1856,8 +1867,8 @@ function CommandsView({
     if (a.status === "active" && b.status !== "active") return -1;
 
     if (sortKey === "usage") {
-      const aCount = commandStats[a.name] || 0;
-      const bCount = commandStats[b.name] || 0;
+      const aCount = getUsageCount(a);
+      const bCount = getUsageCount(b);
       return sortDir === "desc" ? bCount - aCount : aCount - bCount;
     } else {
       const cmp = a.name.localeCompare(b.name);
@@ -1924,7 +1935,7 @@ function CommandsView({
         if (a.type === "folder" && b.type === "folder") return a.name.localeCompare(b.name);
         if (a.type === "command" && b.type === "command") {
           if (sortKey === "usage") {
-            const diff = (commandStats[b.command.name] || 0) - (commandStats[a.command.name] || 0);
+            const diff = getUsageCount(b.command) - getUsageCount(a.command);
             return sortDir === "desc" ? diff : -diff;
           }
           const cmp = a.command.name.localeCompare(b.command.name);
@@ -1956,9 +1967,10 @@ function CommandsView({
 
     // 命令相关
     const cmd = !isFolder ? node.command : null;
-    const shortName = cmd ? (cmd.name.split("/").pop() || cmd.name) : "";
+    // 根路径时显示完整名称，文件夹下只显示最后一段
+    const shortName = cmd ? (depth === 0 ? cmd.name : (cmd.name.split("/").pop() || cmd.name)) : "";
     const isInactive = cmd ? (cmd.status === "deprecated" || cmd.status === "archived") : false;
-    const usageCount = cmd ? commandStats[cmd.name] : 0;
+    const usageCount = cmd ? getUsageCount(cmd) : 0;
 
     return (
       <div key={isFolder ? node.path : cmd!.path} style={{ marginLeft: indent }}>
@@ -1986,6 +1998,15 @@ function CommandsView({
           ) : cmd?.version && (
             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
               v{cmd.version.replace(/^["']|["']$/g, '')}
+            </span>
+          )}
+          {/* Aliases indicator */}
+          {!isFolder && cmd?.aliases && cmd.aliases.length > 0 && (
+            <span
+              className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary/70 font-medium"
+              title={`Aliases: ${cmd.aliases.join(", ")}`}
+            >
+              +{cmd.aliases.length}
             </span>
           )}
           {/* 使用次数 */}
@@ -2122,7 +2143,7 @@ function CommandsView({
             <CommandItemCard
               key={cmd.path}
               command={cmd}
-              usageCount={commandStats[cmd.name]}
+              usageCount={getUsageCount(cmd)}
               onClick={() => onSelect(cmd)}
               onOpenInEditor={() => invoke("open_in_editor", { path: cmd.path })}
               onDeprecate={() => openDeprecateDialog(cmd)}
@@ -2321,6 +2342,8 @@ function CommandDetailView({
   const [replacementCommand, setReplacementCommand] = useState("");
   const [deprecationNote, setDeprecationNote] = useState("");
   const changelogRef = useRef<HTMLDivElement>(null);
+  const [editingAliases, setEditingAliases] = useState(false);
+  const [aliasesInput, setAliasesInput] = useState(command.aliases.join(", "));
 
   const isDeprecated = command.status === "deprecated";
   const isArchived = command.status === "archived";
@@ -2362,6 +2385,20 @@ function CommandDetailView({
       onBack();
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveAliases = async () => {
+    const aliases = aliasesInput
+      .split(",")
+      .map(a => a.trim())
+      .filter(a => a.length > 0);
+    try {
+      await invoke("update_command_aliases", { path: command.path, aliases });
+      setEditingAliases(false);
+      onCommandUpdated?.();
+    } catch (e) {
+      console.error("Failed to update aliases:", e);
     }
   };
 
@@ -2418,6 +2455,34 @@ function CommandDetailView({
             <p className="font-mono text-sm text-ink">{command.allowed_tools}</p>
           </DetailCard>
         )}
+        {/* Aliases section */}
+        <DetailCard label="Aliases" action={
+          editingAliases ? (
+            <div className="flex gap-2">
+              <button onClick={() => { setEditingAliases(false); setAliasesInput(command.aliases.join(", ")); }} className="text-xs text-muted-foreground hover:text-foreground">Cancel</button>
+              <button onClick={handleSaveAliases} className="text-xs text-primary hover:text-primary/80">Save</button>
+            </div>
+          ) : (
+            <button onClick={() => setEditingAliases(true)} className="text-xs text-muted-foreground hover:text-primary">Edit</button>
+          )
+        }>
+          {editingAliases ? (
+            <Input
+              value={aliasesInput}
+              onChange={(e) => setAliasesInput(e.target.value)}
+              placeholder="/old-name, /another-old-name"
+              className="font-mono text-sm"
+            />
+          ) : command.aliases.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {command.aliases.map((alias, i) => (
+                <span key={i} className="font-mono text-sm px-2 py-0.5 rounded bg-primary/10 text-primary">{alias}</span>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground italic">No aliases. Add previous command names to aggregate usage stats.</p>
+          )}
+        </DetailCard>
         <ContentCard label="Content" content={command.content} />
         {command.changelog && (
           <div ref={changelogRef}>

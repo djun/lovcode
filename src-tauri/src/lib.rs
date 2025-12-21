@@ -216,6 +216,7 @@ pub struct LocalCommand {
     pub status: String,                    // "active" | "deprecated" | "archived"
     pub deprecated_by: Option<String>,     // replacement command name
     pub changelog: Option<String>,         // changelog content if .changelog file exists
+    pub aliases: Vec<String>,              // previous names for stats aggregation
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1106,6 +1107,14 @@ fn collect_commands_from_dir(base_dir: &PathBuf, current_dir: &PathBuf, commands
                     .filter(|p| p.exists())
                     .and_then(|p| fs::read_to_string(p).ok());
 
+                // Parse aliases: comma-separated list of previous command names
+                let aliases = frontmatter.get("aliases")
+                    .map(|s| s.split(',')
+                        .map(|a| a.trim().trim_matches(|c| c == '[' || c == ']' || c == '"' || c == '\'').to_string())
+                        .filter(|a| !a.is_empty())
+                        .collect::<Vec<_>>())
+                    .unwrap_or_default();
+
                 commands.push(LocalCommand {
                     name: format!("/{}", name),
                     path: path.to_string_lossy().to_string(),
@@ -1117,6 +1126,7 @@ fn collect_commands_from_dir(base_dir: &PathBuf, current_dir: &PathBuf, commands
                     status: actual_status.to_string(),
                     deprecated_by: frontmatter.get("replaced-by").cloned(),
                     changelog,
+                    aliases,
                 });
             }
         }
@@ -1307,6 +1317,67 @@ fn add_frontmatter_field(content: &str, key: &str, value: &str) -> String {
     }
     // No frontmatter, add one
     format!("---\n{}: {}\n---\n\n{}", key, value, content)
+}
+
+/// Helper to update or add a field in frontmatter
+fn update_frontmatter_field(content: &str, key: &str, value: &str) -> String {
+    if content.starts_with("---") {
+        if let Some(end_idx) = content[3..].find("---") {
+            let fm_content = &content[3..end_idx + 3];
+            let body = &content[end_idx + 6..];
+
+            // Check if key exists and update it
+            let mut found = false;
+            let mapped: Vec<String> = fm_content.lines().map(|line| {
+                if let Some(colon_idx) = line.find(':') {
+                    let k = line[..colon_idx].trim();
+                    if k == key {
+                        found = true;
+                        if value.is_empty() {
+                            return String::new(); // Remove the field
+                        }
+                        return format!("{}: {}", key, value);
+                    }
+                }
+                line.to_string()
+            }).collect();
+            let updated_fm: Vec<String> = mapped.into_iter()
+                .filter(|l| !l.is_empty() || !found).collect();
+
+            let fm_str = updated_fm.join("\n");
+            if found {
+                return format!("---\n{}\n---{}", fm_str, body);
+            } else if !value.is_empty() {
+                // Key not found, add it
+                return format!("---\n{}\n{}: {}\n---{}", fm_str, key, value, body);
+            }
+            return format!("---\n{}\n---{}", fm_str, body);
+        }
+    }
+    // No frontmatter, add one if value is not empty
+    if value.is_empty() {
+        content.to_string()
+    } else {
+        format!("---\n{}: {}\n---\n\n{}", key, value, content)
+    }
+}
+
+/// Update aliases for a command
+#[tauri::command]
+fn update_command_aliases(path: String, aliases: Vec<String>) -> Result<(), String> {
+    let file_path = PathBuf::from(&path);
+    if !file_path.exists() {
+        return Err(format!("Command file not found: {}", path));
+    }
+
+    let content = fs::read_to_string(&file_path).map_err(|e| e.to_string())?;
+
+    // Format aliases as comma-separated string
+    let aliases_value = aliases.join(", ");
+    let updated_content = update_frontmatter_field(&content, "aliases", &aliases_value);
+
+    fs::write(&file_path, updated_content).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 // ============================================================================
@@ -1588,7 +1659,18 @@ fn list_distill_documents() -> Result<Vec<DistillDocument>, String> {
     let mut docs: Vec<DistillDocument> = content
         .lines()
         .filter(|line| !line.trim().is_empty())
-        .filter_map(|line| serde_json::from_str(line).ok())
+        .filter_map(|line| {
+            let mut doc: DistillDocument = serde_json::from_str(line).ok()?;
+            // Use actual file modification time instead of index.jsonl date
+            let file_path = distill_dir.join(&doc.file);
+            if let Ok(metadata) = fs::metadata(&file_path) {
+                if let Ok(modified) = metadata.modified() {
+                    let datetime: chrono::DateTime<chrono::Local> = modified.into();
+                    doc.date = datetime.format("%Y-%m-%dT%H:%M:%S").to_string();
+                }
+            }
+            Some(doc)
+        })
         .collect();
 
     // Sort by date descending (newest first)
@@ -2168,7 +2250,9 @@ async fn get_command_stats() -> Result<HashMap<String, usize>, String> {
                         if file.read_to_string(&mut new_content).is_ok() {
                             for cap in command_pattern.captures_iter(&new_content) {
                                 if let Some(cmd_name) = cap.get(1) {
-                                    *stats.entry(cmd_name.as_str().to_string()).or_insert(0) += 1;
+                                    // Remove leading "/" to match cmd.name format
+                                    let name = cmd_name.as_str().trim_start_matches('/').to_string();
+                                    *stats.entry(name).or_insert(0) += 1;
                                 }
                             }
                         }
@@ -2511,6 +2595,7 @@ pub fn run() {
             deprecate_command,
             archive_command,
             restore_command,
+            update_command_aliases,
             install_mcp_template,
             uninstall_mcp_template,
             check_mcp_installed,
