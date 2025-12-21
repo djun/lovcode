@@ -3,7 +3,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { version } from "../package.json";
-import { PanelLeft, User, ExternalLink, FolderOpen, ChevronDown, ChevronRight as ChevronRightIcon, HelpCircle, Copy, Download, Check, MoreHorizontal, RefreshCw, ChevronLeft, ChevronRight, Store, Archive, RotateCcw, List, FolderTree, Folder } from "lucide-react";
+import { PanelLeft, User, ExternalLink, FolderOpen, ChevronDown, ChevronRight as ChevronRightIcon, HelpCircle, Copy, Download, Check, MoreHorizontal, RefreshCw, ChevronLeft, ChevronRight, Store, Archive, RotateCcw, List, FolderTree, Folder, Zap } from "lucide-react";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent as CollapsibleBody } from "./components/ui/collapsible";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import Markdown from "react-markdown";
@@ -1947,45 +1947,123 @@ function CommandsView({
   };
 
   const renderTreeNode = (node: TreeNode, depth: number = 0): React.ReactNode => {
-    // 缩进计算: 根级无缩进，嵌套项对齐到父级文件夹图标位置
-    const folderIndent = depth === 0 ? 12 : (depth - 1) * 24 + 36;
-    const childIndent = depth === 0 ? 0 : (depth - 1) * 24 + 36;
+    const indent = depth * 24;
+    const isFolder = node.type === "folder";
+    const isExpanded = isFolder && expandedFolders.has(node.path);
 
-    if (node.type === "command") {
-      // 在 tree 模式下只显示文件名部分
-      const shortName = node.command.name.split("/").pop() || node.command.name;
-      return (
-        <div key={node.command.path} style={{ paddingLeft: childIndent }}>
-          <CommandItemCard
-            command={node.command}
-            displayName={shortName}
-            usageCount={commandStats[node.command.name]}
-            onClick={() => onSelect(node.command)}
-            onOpenInEditor={() => invoke("open_in_editor", { path: node.command.path })}
-            onDeprecate={() => openDeprecateDialog(node.command)}
-            onRestore={() => handleRestore(node.command)}
-          />
-        </div>
-      );
-    }
+    // 命令相关
+    const cmd = !isFolder ? node.command : null;
+    const shortName = cmd ? (cmd.name.split("/").pop() || cmd.name) : "";
+    const isInactive = cmd ? (cmd.status === "deprecated" || cmd.status === "archived") : false;
+    const usageCount = cmd ? commandStats[cmd.name] : 0;
 
-    const isExpanded = expandedFolders.has(node.path);
     return (
-      <div key={node.path}>
-        <div style={{ paddingLeft: folderIndent }}>
-          <button
-            onClick={() => toggleFolder(node.path)}
-            className="w-full flex items-center gap-2 py-2 px-3 text-left rounded-lg border bg-card border-border hover:border-primary transition-colors"
-          >
+      <div key={isFolder ? node.path : cmd!.path} style={{ marginLeft: indent }}>
+        <button
+          onClick={() => isFolder ? toggleFolder(node.path) : onSelect(cmd!)}
+          className={`w-full flex items-center gap-2 py-2 px-3 text-left rounded-lg border transition-colors ${
+            isInactive
+              ? "bg-card-alt border-dashed border-border/50 opacity-70 hover:opacity-100"
+              : "bg-card border-border hover:border-primary"
+          }`}
+        >
+          {/* Chevron 或占位 */}
+          {isFolder ? (
             <ChevronRightIcon className={`w-4 h-4 text-muted-foreground transition-transform ${isExpanded ? "rotate-90" : ""}`} />
+          ) : (
+            <span className="w-4 h-4" />
+          )}
+          {/* 图标 */}
+          {isFolder ? (
             <Folder className="w-4 h-4 text-primary" />
-            <span className="font-mono font-medium text-primary">{node.name}</span>
+          ) : (
+            <Zap className={`w-4 h-4 ${isInactive ? "text-muted-foreground" : "text-primary"}`} />
+          )}
+          {/* 名称 */}
+          <span className={`font-mono font-medium ${isInactive ? "text-muted-foreground" : "text-primary"}`}>
+            {isFolder ? node.name : shortName}
+          </span>
+          {/* Badge: 数量或版本 */}
+          {isFolder ? (
             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
               {node.children.length}
             </span>
-          </button>
-        </div>
-        {isExpanded && (
+          ) : cmd?.version && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
+              v{cmd.version.replace(/^["']|["']$/g, '')}
+            </span>
+          )}
+          {/* 使用次数 */}
+          {!isFolder && usageCount > 0 && (
+            <span
+              className={`text-xs font-bold italic tabular-nums ${
+                usageCount >= 100 ? "text-amber-500" :
+                usageCount >= 50 ? "text-orange-500" :
+                usageCount >= 10 ? "text-primary" : "text-muted-foreground"
+              }`}
+              title={`Used ${usageCount} times`}
+            >
+              ×{usageCount}
+            </span>
+          )}
+          <span className="flex-1" />
+          {/* 状态 Badge */}
+          {cmd?.status === "deprecated" && (
+            <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-600">deprecated</span>
+          )}
+          {cmd?.status === "archived" && (
+            <span className="text-xs px-1.5 py-0.5 rounded bg-card-alt text-muted-foreground">archived</span>
+          )}
+          {/* 菜单 */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <span
+                role="button"
+                className="w-4 h-4 flex items-center justify-center cursor-pointer hover:text-primary"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MoreHorizontal className="w-4 h-4" />
+              </span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {isFolder ? (
+                <>
+                  <DropdownMenuItem onClick={() => toggleFolder(node.path)}>
+                    {isExpanded ? "Collapse" : "Expand"}
+                  </DropdownMenuItem>
+                </>
+              ) : (
+                <>
+                  <DropdownMenuItem onClick={() => onSelect(cmd!)}>
+                    <HelpCircle className="w-4 h-4 mr-2" />
+                    View Details
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => invoke("open_in_editor", { path: cmd!.path })}>
+                    <ExternalLink className="w-4 h-4 mr-2" />
+                    Open in Editor
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigator.clipboard.writeText(cmd!.path)}>
+                    <Copy className="w-4 h-4 mr-2" />
+                    Copy Path
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  {isInactive ? (
+                    <DropdownMenuItem onClick={() => handleRestore(cmd!)}>
+                      <RotateCcw className="w-4 h-4 mr-2" />
+                      Restore
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem onClick={() => openDeprecateDialog(cmd!)} className="text-amber-600">
+                      <Archive className="w-4 h-4 mr-2" />
+                      Deprecate
+                    </DropdownMenuItem>
+                  )}
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </button>
+        {isFolder && isExpanded && (
           <div className="space-y-1 mt-1">
             {node.children.map(child => renderTreeNode(child, depth + 1))}
           </div>
@@ -2149,55 +2227,55 @@ function CommandItemCard({
   };
 
   return (
-    <div
-      className={`w-full text-left rounded-lg py-2 px-3 border transition-colors ${
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center gap-2 py-2 px-3 text-left rounded-lg border transition-colors ${
         isInactive
           ? "bg-card-alt border-dashed border-border/50 opacity-70 hover:opacity-100"
           : "bg-card border-border hover:border-primary"
       }`}
     >
-      <div className="flex items-center gap-3">
-        <button onClick={onClick} className="flex-1 min-w-0 flex items-center gap-2">
-          <span className={`font-mono font-medium shrink-0 ${isInactive ? "text-muted-foreground" : "text-primary"}`}>
-            {displayName ?? command.name}
-          </span>
-          {command.version && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground font-medium shrink-0">
-              v{command.version.replace(/^["']|["']$/g, '')}
-            </span>
-          )}
-          {usageCount !== undefined && usageCount > 0 && (
-            <span
-              className={`shrink-0 font-bold italic tabular-nums ${
-                usageCount >= 100 ? "text-amber-500" :
-                usageCount >= 50 ? "text-orange-500" :
-                usageCount >= 10 ? "text-primary" : "text-muted-foreground"
-              }`}
-              title={`Used ${usageCount} times`}
-            >
-              <span className="text-[10px] not-italic opacity-70">×</span>
-              <span className="text-sm">{usageCount}</span>
-            </span>
-          )}
-        </button>
-        {copied && (
-          <span className="text-xs px-1.5 py-0.5 rounded bg-green-500/20 text-green-600 shrink-0 animate-pulse">
-            Copied!
-          </span>
-        )}
-        {isDeprecated && (
-          <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-600 shrink-0">
-            deprecated
-          </span>
-        )}
-        {isArchived && (
-          <span className="text-xs px-1.5 py-0.5 rounded bg-card-alt text-muted-foreground shrink-0">
-            archived
-          </span>
-        )}
-        <DropdownMenu>
+      <span className="w-4 shrink-0" /> {/* 占位对齐 chevron */}
+      <Zap className={`w-4 h-4 shrink-0 ${isInactive ? "text-muted-foreground" : "text-primary"}`} />
+      <span className={`font-mono font-medium shrink-0 ${isInactive ? "text-muted-foreground" : "text-primary"}`}>
+        {displayName ?? command.name}
+      </span>
+      {command.version && (
+        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground font-medium shrink-0">
+          v{command.version.replace(/^["']|["']$/g, '')}
+        </span>
+      )}
+      {usageCount !== undefined && usageCount > 0 && (
+        <span
+          className={`shrink-0 text-xs font-bold italic tabular-nums ${
+            usageCount >= 100 ? "text-amber-500" :
+            usageCount >= 50 ? "text-orange-500" :
+            usageCount >= 10 ? "text-primary" : "text-muted-foreground"
+          }`}
+          title={`Used ${usageCount} times`}
+        >
+          ×{usageCount}
+        </span>
+      )}
+      <span className="flex-1" /> {/* spacer */}
+      {copied && (
+        <span className="text-xs px-1.5 py-0.5 rounded bg-green-500/20 text-green-600 shrink-0 animate-pulse">
+          Copied!
+        </span>
+      )}
+      {isDeprecated && (
+        <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-600 shrink-0">
+          deprecated
+        </span>
+      )}
+      {isArchived && (
+        <span className="text-xs px-1.5 py-0.5 rounded bg-card-alt text-muted-foreground shrink-0">
+          archived
+        </span>
+      )}
+      <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={(e) => e.stopPropagation()}>
+            <Button variant="ghost" size="icon" className="h-4 w-4 shrink-0 p-0" onClick={(e) => e.stopPropagation()}>
               <MoreHorizontal className="w-4 h-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -2231,8 +2309,7 @@ function CommandItemCard({
             )}
           </DropdownMenuContent>
         </DropdownMenu>
-      </div>
-    </div>
+    </button>
   );
 }
 
