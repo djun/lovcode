@@ -160,11 +160,8 @@ export function FloatWindow() {
         const collapsedHeight = 48;
         const collapsedWidth = getCollapsedWidth();
 
-        // 先更新状态，让样式先变化
-        setIsExpanded(prev => !prev);
-
         if (!isExpanded) {
-          // 展开
+          // 展开：先调整窗口大小，再改状态（避免圆角突变）
           if (monitor) {
             const scaleFactor = monitor.scaleFactor;
             const screenWidth = monitor.size.width / scaleFactor;
@@ -172,7 +169,6 @@ export function FloatWindow() {
             const windowY = pos.y / scaleFactor;
 
             if (windowX + expandedWidth > screenWidth) {
-              // 向左展开：窗口左移
               setExpandDirection("left");
               const newX = windowX - (expandedWidth - collapsedWidth);
               await win.setPosition(new LogicalPosition(Math.max(0, newX), windowY));
@@ -181,10 +177,11 @@ export function FloatWindow() {
             }
           }
           await win.setSize(new LogicalSize(expandedWidth, expandedHeight));
+          setIsExpanded(true);
         } else {
-          // 收起
+          // 收起：先改状态，再调整窗口大小
+          setIsExpanded(false);
           if (expandDirection === "left") {
-            // 向左展开的，收起时窗口右移回来
             const scaleFactor = monitor?.scaleFactor || 1;
             const windowX = pos.x / scaleFactor;
             const windowY = pos.y / scaleFactor;
@@ -223,7 +220,7 @@ export function FloatWindow() {
   return (
     <div className="w-fit h-fit">
       <div
-        className={`bg-primary text-primary-foreground shadow-2xl overflow-hidden transition-all ${isExpanded ? "rounded-xl" : collapsedRounding}`}
+        className={`bg-primary text-primary-foreground shadow-2xl overflow-hidden ${isExpanded ? "rounded-xl" : collapsedRounding}`}
       >
         {/* Header - click to toggle, drag to move */}
         <div
