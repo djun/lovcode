@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
-import { ClipboardList, X, GripVertical } from "lucide-react";
+import { ClipboardList, X } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
-import { getCurrentWindow, LogicalSize, LogicalPosition } from "@tauri-apps/api/window";
+import { getCurrentWindow, currentMonitor, LogicalSize, LogicalPosition } from "@tauri-apps/api/window";
 import { motion, AnimatePresence } from "framer-motion";
 
 // ============================================================================
@@ -33,40 +33,49 @@ export function FloatWindow() {
   // 磁吸到边缘
   const snapToEdge = async () => {
     const win = getCurrentWindow();
+    const monitor = await currentMonitor();
+    if (!monitor) return;
+
     const pos = await win.outerPosition();
-    const size = await win.outerSize();
-    const scale = window.devicePixelRatio;
+    const outerSize = await win.outerSize();
+    const innerSize = await win.innerSize();
+    const scale = monitor.scaleFactor;
+
+    console.log("DEBUG sizes:", {
+      outer: outerSize.width / scale,
+      inner: innerSize.width / scale,
+      diff: (outerSize.width - innerSize.width) / scale,
+    });
 
     // 转换为逻辑坐标
+    const monitorX = monitor.position.x / scale;
+    const monitorWidth = monitor.size.width / scale;
     const windowX = pos.x / scale;
     const windowY = pos.y / scale;
-    const windowWidth = size.width / scale;
-
-    // 使用 Web API 获取可用屏幕区域（排除菜单栏和 Dock）
-    const screenLeft = window.screen.availLeft ?? 0;
-    const screenWidth = window.screen.availWidth;
-
-    // 相对于可用区域的位置
-    const relativeX = windowX - screenLeft;
+    // 使用 innerSize（可见内容区域）
+    const windowWidth = innerSize.width / scale;
 
     let newX = windowX;
     let snappedSide: "left" | "right" | null = null;
 
     // 左边磁吸
-    if (relativeX < SNAP_THRESHOLD) {
-      newX = screenLeft;
+    if (windowX - monitorX < SNAP_THRESHOLD) {
+      newX = monitorX;
       snappedSide = "left";
     }
     // 右边磁吸
-    else if (screenWidth - relativeX - windowWidth < SNAP_THRESHOLD) {
-      newX = screenLeft + screenWidth - windowWidth;
+    else if (monitorX + monitorWidth - windowX - windowWidth < SNAP_THRESHOLD) {
+      newX = monitorX + monitorWidth - windowWidth;
       snappedSide = "right";
     }
 
     setSnapSide(snappedSide);
 
     if (snappedSide !== null) {
+      console.log("DEBUG before setPosition:", { newX, windowY, targetRight: newX + windowWidth, monitorRight: monitorX + monitorWidth });
       await win.setPosition(new LogicalPosition(newX, windowY));
+      const posAfter = await win.outerPosition();
+      console.log("DEBUG after setPosition:", { actualX: posAfter.x / scale, actualRight: posAfter.x / scale + windowWidth });
     }
   };
 
@@ -75,10 +84,10 @@ export function FloatWindow() {
     const handleGlobalMouseUp = () => {
       if (isDraggingRef.current) {
         isDraggingRef.current = false;
-        // 延迟一帧确保窗口位置已更新
-        requestAnimationFrame(() => {
+        // 延迟确保 Tauri startDragging 完全结束
+        setTimeout(() => {
           snapToEdge();
-        });
+        }, 50);
       }
     };
 
@@ -167,14 +176,30 @@ export function FloatWindow() {
         if (!isExpanded) {
           // 展开：先调整窗口大小，再改状态（避免圆角突变）
           const screenLeft = window.screen.availLeft ?? 0;
+          const screenTop = window.screen.availTop ?? 0;
           const screenWidth = window.screen.availWidth;
+          const screenHeight = window.screen.availHeight;
 
+          let newX = windowX;
+          let newY = windowY;
+
+          // 水平方向检测
           if (windowX + expandedWidth > screenLeft + screenWidth) {
             setExpandDirection("left");
-            const newX = windowX - (expandedWidth - collapsedWidth);
-            await win.setPosition(new LogicalPosition(Math.max(screenLeft, newX), windowY));
+            newX = windowX - (expandedWidth - collapsedWidth);
+            newX = Math.max(screenLeft, newX);
           } else {
             setExpandDirection("right");
+          }
+
+          // 垂直方向检测：如果底部会超出，向上调整
+          if (windowY + expandedHeight > screenTop + screenHeight) {
+            newY = screenTop + screenHeight - expandedHeight;
+            newY = Math.max(screenTop, newY);
+          }
+
+          if (newX !== windowX || newY !== windowY) {
+            await win.setPosition(new LogicalPosition(newX, newY));
           }
           await win.setSize(new LogicalSize(expandedWidth, expandedHeight));
           setIsExpanded(true);
@@ -214,14 +239,24 @@ export function FloatWindow() {
     ? "rounded-l-full" // 靠右边，左边圆
     : "rounded-full";  // 未吸附，全圆
 
+  const uiRef = useRef<HTMLDivElement>(null);
+
+  // 调试：打印 UI 实际宽度
+  useEffect(() => {
+    if (uiRef.current) {
+      const rect = uiRef.current.getBoundingClientRect();
+      console.log("DEBUG UI actual size:", { width: rect.width, height: rect.height, calculatedWidth: isExpanded ? 280 : getCollapsedWidth() });
+    }
+  }, [isExpanded]);
+
   return (
-    <div className="w-fit h-fit">
-      <div
-        className={`bg-primary text-primary-foreground shadow-2xl overflow-hidden ${isExpanded ? "rounded-xl" : collapsedRounding}`}
-      >
+    <div
+      ref={uiRef}
+      className={`w-screen h-screen bg-primary text-primary-foreground overflow-hidden flex flex-col ${isExpanded ? "rounded-xl" : collapsedRounding}`}
+    >
         {/* Header - click to toggle, drag to move */}
         <div
-          className={`flex items-center gap-2 cursor-pointer select-none h-full ${isExpanded ? "justify-center p-3" : "px-3 py-2"}`}
+          className={`flex items-center gap-2 cursor-pointer select-none shrink-0 ${isExpanded ? "justify-center p-3" : "px-3 py-2 h-full"}`}
           onMouseDown={handleMouseDown}
         >
           {isExpanded ? (
@@ -231,8 +266,16 @@ export function FloatWindow() {
               className="flex items-center gap-2 flex-1"
             >
               <ClipboardList className="w-5 h-5 shrink-0" />
-              <span className="font-medium text-sm flex-1">Review Queue</span>
-              <GripVertical className="w-4 h-4 opacity-50" />
+              <span className="font-medium text-sm flex-1">Lovnotifier Messages</span>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  getCurrentWindow().hide();
+                }}
+                className="p-1 hover:bg-white/20 rounded transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </motion.div>
           ) : (
             <div className={`flex items-center w-full ${snapSide === "right" ? "flex-row-reverse" : ""}`}>
@@ -295,7 +338,6 @@ export function FloatWindow() {
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
     </div>
   );
 }

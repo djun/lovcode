@@ -739,10 +739,10 @@ function App() {
                   </button>
                   <button
                     onClick={toggleFloatWindow}
-                    className="w-full flex items-center justify-between px-2 py-1.5 text-sm text-muted-foreground hover:text-ink hover:bg-card-alt rounded-md transition-colors"
+                    className="w-full flex items-center justify-between gap-3 px-2.5 py-1.5 text-sm text-muted-foreground hover:text-ink hover:bg-card-alt rounded-md transition-colors"
                   >
-                    <span>Review Queue</span>
-                    <span className={`w-2 h-2 rounded-full ${floatWindowVisible ? "bg-green-500" : "bg-muted-foreground/30"}`} />
+                    <span className="whitespace-nowrap">Lovnotifier Messages</span>
+                    <span className={`w-2 h-2 shrink-0 rounded-full ${floatWindowVisible ? "bg-green-500" : "bg-muted-foreground/30"}`} />
                   </button>
                 </div>
               </PopoverContent>
