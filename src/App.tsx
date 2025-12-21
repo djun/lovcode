@@ -1947,11 +1947,18 @@ function CommandsView({
   };
 
   const renderTreeNode = (node: TreeNode, depth: number = 0): React.ReactNode => {
+    // 缩进计算: 根级无缩进，嵌套项对齐到父级文件夹图标位置
+    const folderIndent = depth === 0 ? 12 : (depth - 1) * 24 + 36;
+    const childIndent = depth === 0 ? 0 : (depth - 1) * 24 + 36;
+
     if (node.type === "command") {
+      // 在 tree 模式下只显示文件名部分
+      const shortName = node.command.name.split("/").pop() || node.command.name;
       return (
-        <div key={node.command.path} style={{ paddingLeft: depth * 16 }}>
+        <div key={node.command.path} style={{ paddingLeft: childIndent }}>
           <CommandItemCard
             command={node.command}
+            displayName={shortName}
             usageCount={commandStats[node.command.name]}
             onClick={() => onSelect(node.command)}
             onOpenInEditor={() => invoke("open_in_editor", { path: node.command.path })}
@@ -1965,18 +1972,21 @@ function CommandsView({
     const isExpanded = expandedFolders.has(node.path);
     return (
       <div key={node.path}>
-        <button
-          onClick={() => toggleFolder(node.path)}
-          className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-card-alt rounded-lg transition-colors"
-          style={{ paddingLeft: depth * 16 + 12 }}
-        >
-          <ChevronRightIcon className={`w-4 h-4 text-muted-foreground transition-transform ${isExpanded ? "rotate-90" : ""}`} />
-          <Folder className="w-4 h-4 text-primary" />
-          <span className="font-medium text-ink">{node.name}</span>
-          <span className="text-xs text-muted-foreground">({node.children.length})</span>
-        </button>
+        <div style={{ paddingLeft: folderIndent }}>
+          <button
+            onClick={() => toggleFolder(node.path)}
+            className="w-full flex items-center gap-2 py-2 px-3 text-left rounded-lg border bg-card border-border hover:border-primary transition-colors"
+          >
+            <ChevronRightIcon className={`w-4 h-4 text-muted-foreground transition-transform ${isExpanded ? "rotate-90" : ""}`} />
+            <Folder className="w-4 h-4 text-primary" />
+            <span className="font-mono font-medium text-primary">{node.name}</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
+              {node.children.length}
+            </span>
+          </button>
+        </div>
         {isExpanded && (
-          <div className="space-y-1">
+          <div className="space-y-1 mt-1">
             {node.children.map(child => renderTreeNode(child, depth + 1))}
           </div>
         )}
@@ -2112,6 +2122,7 @@ function CommandsView({
 
 function CommandItemCard({
   command,
+  displayName,
   usageCount,
   onClick,
   onOpenInEditor,
@@ -2119,93 +2130,107 @@ function CommandItemCard({
   onRestore,
 }: {
   command: LocalCommand;
+  displayName?: string;
   usageCount?: number;
   onClick: () => void;
   onOpenInEditor?: () => void;
   onDeprecate?: () => void;
   onRestore?: () => void;
 }) {
+  const [copied, setCopied] = useState(false);
   const isDeprecated = command.status === "deprecated";
   const isArchived = command.status === "archived";
   const isInactive = isDeprecated || isArchived;
 
+  const handleCopyPath = () => {
+    navigator.clipboard.writeText(command.path);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
   return (
     <div
-      className={`w-full text-left rounded-xl p-4 border transition-colors ${
+      className={`w-full text-left rounded-lg py-2 px-3 border transition-colors ${
         isInactive
           ? "bg-card-alt border-dashed border-border/50 opacity-70 hover:opacity-100"
           : "bg-card border-border hover:border-primary"
       }`}
     >
-      <div className="flex items-start justify-between gap-4">
-        <button onClick={onClick} className="flex-1 min-w-0 text-left">
-          <div className="flex items-center gap-2">
-            <p className={`font-mono font-medium ${isInactive ? "text-muted-foreground" : "text-primary"}`}>
-              {command.name}
-            </p>
-            {command.version && (
-              <span className="text-xs text-muted-foreground">v{command.version.replace(/^["']|["']$/g, '')}</span>
-            )}
-            {usageCount !== undefined && usageCount > 0 && (
-              <span className="text-xs text-muted-foreground" title={`Used ${usageCount} times`}>
-                ×{usageCount}
-              </span>
-            )}
-          </div>
-          {!isInactive && command.argument_hint && (
-            <p className="text-xs text-muted-foreground mt-0.5 font-mono">{command.argument_hint}</p>
+      <div className="flex items-center gap-3">
+        <button onClick={onClick} className="flex-1 min-w-0 flex items-center gap-2">
+          <span className={`font-mono font-medium shrink-0 ${isInactive ? "text-muted-foreground" : "text-primary"}`}>
+            {displayName ?? command.name}
+          </span>
+          {command.version && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground font-medium shrink-0">
+              v{command.version.replace(/^["']|["']$/g, '')}
+            </span>
           )}
-          {command.description && (
-            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{command.description}</p>
-          )}
-          {isDeprecated && command.deprecated_by && (
-            <p className="text-xs text-amber-600 mt-1">
-              → Use {command.deprecated_by} instead
-            </p>
+          {usageCount !== undefined && usageCount > 0 && (
+            <span
+              className={`shrink-0 font-bold italic tabular-nums ${
+                usageCount >= 100 ? "text-amber-500" :
+                usageCount >= 50 ? "text-orange-500" :
+                usageCount >= 10 ? "text-primary" : "text-muted-foreground"
+              }`}
+              title={`Used ${usageCount} times`}
+            >
+              <span className="text-[10px] not-italic opacity-70">×</span>
+              <span className="text-sm">{usageCount}</span>
+            </span>
           )}
         </button>
-        <div className="flex items-start gap-2">
-          <div className="flex flex-col items-end gap-1">
-            {isDeprecated && (
-              <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-600">
-                deprecated
-              </span>
+        {copied && (
+          <span className="text-xs px-1.5 py-0.5 rounded bg-green-500/20 text-green-600 shrink-0 animate-pulse">
+            Copied!
+          </span>
+        )}
+        {isDeprecated && (
+          <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-600 shrink-0">
+            deprecated
+          </span>
+        )}
+        {isArchived && (
+          <span className="text-xs px-1.5 py-0.5 rounded bg-card-alt text-muted-foreground shrink-0">
+            archived
+          </span>
+        )}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={(e) => e.stopPropagation()}>
+              <MoreHorizontal className="w-4 h-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={onClick}>
+              <HelpCircle className="w-4 h-4 mr-2" />
+              View Details
+            </DropdownMenuItem>
+            {onOpenInEditor && (
+              <DropdownMenuItem onClick={onOpenInEditor}>
+                <ExternalLink className="w-4 h-4 mr-2" />
+                Open in Editor
+              </DropdownMenuItem>
             )}
-            {isArchived && (
-              <span className="text-xs px-2 py-0.5 rounded bg-card-alt text-muted-foreground">
-                archived
-              </span>
+            <DropdownMenuItem onClick={handleCopyPath}>
+              {copied ? <Check className="w-4 h-4 mr-2 text-green-500" /> : <Copy className="w-4 h-4 mr-2" />}
+              {copied ? "Copied!" : "Copy Path"}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            {isInactive && onRestore && (
+              <DropdownMenuItem onClick={onRestore}>
+                <RotateCcw className="w-4 h-4 mr-2" />
+                Restore
+              </DropdownMenuItem>
             )}
-          </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={(e) => e.stopPropagation()}>
-                <MoreHorizontal className="w-4 h-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {onOpenInEditor && (
-                <DropdownMenuItem onClick={onOpenInEditor}>
-                  <ExternalLink className="w-4 h-4 mr-2" />
-                  Open in Editor
-                </DropdownMenuItem>
-              )}
-              {onOpenInEditor && (onDeprecate || onRestore) && <DropdownMenuSeparator />}
-              {isInactive && onRestore && (
-                <DropdownMenuItem onClick={onRestore}>
-                  <RotateCcw className="w-4 h-4 mr-2" />
-                  Restore
-                </DropdownMenuItem>
-              )}
-              {!isInactive && onDeprecate && (
-                <DropdownMenuItem onClick={onDeprecate} className="text-amber-600">
-                  <Archive className="w-4 h-4 mr-2" />
-                  Deprecate
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+            {!isInactive && onDeprecate && (
+              <DropdownMenuItem onClick={onDeprecate} className="text-amber-600">
+                <Archive className="w-4 h-4 mr-2" />
+                Deprecate
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   );
