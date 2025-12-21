@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef, createContext, useContext, useMemo, UIEvent } from "react";
+import { DndContext, DragOverlay, useDraggable, useDroppable, DragEndEvent, DragStartEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { version } from "../package.json";
-import { PanelLeft, User, ExternalLink, FolderOpen, ChevronDown, HelpCircle, Copy, Download, Check, MoreHorizontal, RefreshCw, ChevronLeft, ChevronRight, Store, Archive, RotateCcw, List, FolderTree, Folder, Terminal, FileText, FolderInput } from "lucide-react";
+import { PanelLeft, User, ExternalLink, FolderOpen, ChevronDown, HelpCircle, Copy, Download, Check, MoreHorizontal, RefreshCw, ChevronLeft, ChevronRight, Store, Archive, RotateCcw, List, FolderTree, Folder, Terminal, FolderInput } from "lucide-react";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent as CollapsibleBody } from "./components/ui/collapsible";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import Markdown from "react-markdown";
@@ -1833,6 +1834,209 @@ function OutputStylesView() {
 type CommandSortKey = "usage" | "name";
 type SortDirection = "asc" | "desc";
 
+// Draggable command item
+function DraggableCommandItem({
+  cmd,
+  shortName,
+  usageCount,
+  isInactive,
+  isDragging,
+  onClick,
+  onOpenInEditor,
+  onMove,
+  onDeprecate,
+  onRestore,
+}: {
+  cmd: LocalCommand;
+  shortName: string;
+  usageCount: number;
+  isInactive: boolean;
+  isDragging: boolean;
+  onClick: () => void;
+  onOpenInEditor: () => void;
+  onMove: () => void;
+  onDeprecate: () => void;
+  onRestore: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform } = useDraggable({
+    id: cmd.path,
+    disabled: isInactive,
+  });
+
+  const style = transform ? {
+    transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+    zIndex: 1000,
+  } : undefined;
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...listeners}
+      {...attributes}
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      className={`w-full flex items-center gap-2 py-1.5 px-2 text-left rounded-md transition-colors select-none ${
+        !isInactive ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
+      } ${isInactive ? "opacity-60 hover:opacity-100" : ""} ${isDragging ? "opacity-50 ring-2 ring-primary" : ""} hover:bg-muted/50`}
+    >
+      <Terminal className={`w-4 h-4 ${isInactive ? "text-muted-foreground" : "text-primary"}`} />
+      <span className={`font-mono font-medium ${isInactive ? "text-muted-foreground" : "text-primary"}`}>
+        {shortName}
+      </span>
+      {cmd.version && (
+        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
+          v{cmd.version.replace(/^["']|["']$/g, '')}
+        </span>
+      )}
+      {usageCount > 0 && (
+        <span
+          className={`text-xs font-bold italic tabular-nums ${
+            usageCount >= 100 ? "text-amber-500" :
+            usageCount >= 50 ? "text-orange-500" :
+            usageCount >= 10 ? "text-primary" : "text-muted-foreground"
+          }`}
+          title={`Used ${usageCount} times`}
+        >
+          ×{usageCount}
+        </span>
+      )}
+      {cmd.aliases && cmd.aliases.length > 0 && (
+        <span className="relative group/aliases">
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary/70 font-medium">
+            +{cmd.aliases.length}
+          </span>
+          <div className="absolute left-0 top-full mt-1 hidden group-hover/aliases:block z-50 bg-popover border border-border rounded-md shadow-md p-2 min-w-max">
+            <div className="text-xs text-muted-foreground mb-1">Aliases:</div>
+            {cmd.aliases.map((alias, i) => (
+              <div key={i} className="font-mono text-xs text-primary">{alias}</div>
+            ))}
+          </div>
+        </span>
+      )}
+      <span className="flex-1" />
+      {cmd.status === "deprecated" && (
+        <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-600">deprecated</span>
+      )}
+      {cmd.status === "archived" && (
+        <span className="text-xs px-1.5 py-0.5 rounded bg-card-alt text-muted-foreground">archived</span>
+      )}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <span
+            role="button"
+            className="w-4 h-4 flex items-center justify-center cursor-pointer hover:text-primary"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <MoreHorizontal className="w-4 h-4" />
+          </span>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+          <DropdownMenuItem onClick={onClick}>
+            <HelpCircle className="w-4 h-4 mr-2" />
+            View Details
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={onOpenInEditor}>
+            <ExternalLink className="w-4 h-4 mr-2" />
+            Open in Editor
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => navigator.clipboard.writeText(cmd.path)}>
+            <Copy className="w-4 h-4 mr-2" />
+            Copy Path
+          </DropdownMenuItem>
+          {!isInactive && (
+            <DropdownMenuItem onSelect={onMove}>
+              <FolderInput className="w-4 h-4 mr-2" />
+              Move to...
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuSeparator />
+          {isInactive ? (
+            <DropdownMenuItem onClick={onRestore}>
+              <RotateCcw className="w-4 h-4 mr-2" />
+              Restore
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem onClick={onDeprecate} className="text-amber-600">
+              <Archive className="w-4 h-4 mr-2" />
+              Deprecate
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
+// Droppable folder
+function DroppableFolder({
+  folderPath,
+  name,
+  childCount,
+  isExpanded,
+  isOver,
+  onToggle,
+  children,
+}: {
+  folderPath: string;
+  name: string;
+  childCount: number;
+  isExpanded: boolean;
+  isOver: boolean;
+  onToggle: () => void;
+  children?: React.ReactNode;
+}) {
+  const { setNodeRef, isOver: dropIsOver } = useDroppable({
+    id: folderPath,
+  });
+
+  const highlighted = isOver || dropIsOver;
+
+  return (
+    <div>
+      <div
+        ref={setNodeRef}
+        role="button"
+        tabIndex={0}
+        onClick={onToggle}
+        className={`w-full flex items-center gap-2 py-1.5 px-2 text-left rounded-md transition-colors cursor-pointer ${
+          highlighted ? "bg-primary/20 ring-2 ring-primary/50" : ""
+        } hover:bg-muted/50`}
+      >
+        <Folder className="w-4 h-4 text-primary" />
+        <span className="font-mono font-medium text-primary">{name}</span>
+        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
+          {childCount}
+        </span>
+      </div>
+      {isExpanded && children && (
+        <div className="space-y-1 mt-1">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Root drop zone
+function RootDropZone({ isOver }: { isOver: boolean }) {
+  const { setNodeRef, isOver: dropIsOver } = useDroppable({ id: "" });
+  const highlighted = isOver || dropIsOver;
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`flex items-center gap-2 py-1.5 px-2 rounded-md transition-colors ${
+        highlighted ? "bg-primary/20 ring-2 ring-primary/50" : "bg-muted/30"
+      }`}
+    >
+      <Folder className="w-4 h-4 text-muted-foreground" />
+      <span className="font-mono text-sm text-muted-foreground">/ (root)</span>
+    </div>
+  );
+}
+
 function CommandsView({
   onSelect,
   marketplaceItems,
@@ -1861,6 +2065,7 @@ function CommandsView({
   const [moveTargetFolder, setMoveTargetFolder] = useState("");
   const [moveCreateDirOpen, setMoveCreateDirOpen] = useState(false);
   const [pendingMove, setPendingMove] = useState<{ cmd: LocalCommand; newPath: string; dirPath: string } | null>(null);
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const { search, setSearch, filtered } = useSearch(commands, ["name", "description"]);
 
   // Calculate usage count including aliases
@@ -1969,6 +2174,43 @@ function CommandsView({
       await refreshCommands();
     }
   };
+
+  // dnd-kit handlers
+  const handleDragStartDnd = (event: DragStartEvent) => {
+    setActiveDragId(event.active.id as string);
+  };
+
+  const handleDragEndDnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveDragId(null);
+
+    if (!over) return;
+
+    const cmdPath = active.id as string;
+    const targetFolder = over.id as string;
+
+    // Find the command being dragged
+    const cmd = commands.find(c => c.path === cmdPath);
+    if (!cmd) return;
+
+    // Get current folder of dragged command
+    const match = cmd.path.match(/\.claude\/commands\/(.+)$/);
+    const currentFolder = match ? (match[1].split("/").length > 1 ? match[1].split("/").slice(0, -1).join("/") : "") : "";
+
+    // Skip if dropping to same folder
+    if (targetFolder === currentFolder) return;
+
+    await handleMove(cmd, targetFolder);
+  };
+
+  const activeDragCmd = activeDragId ? commands.find(c => c.path === activeDragId) : null;
+
+  // Require 8px movement before drag starts (allows click to work)
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    })
+  );
 
   useEffect(() => {
     // Load commands first for instant display
@@ -2089,140 +2331,46 @@ function CommandsView({
 
   const renderTreeNode = (node: TreeNode, depth: number = 0): React.ReactNode => {
     const isFolder = node.type === "folder";
-    // 命令图标对齐到父文件夹文字开始位置
     const indent = depth * 24;
     const isExpanded = isFolder && expandedFolders.has(node.path);
 
-    // 命令相关
-    const cmd = !isFolder ? node.command : null;
-    // 根路径时显示完整名称，文件夹下只显示最后一段
-    const shortName = cmd ? (depth === 0 ? cmd.name : (cmd.name.split("/").pop() || cmd.name)) : "";
-    const isInactive = cmd ? (cmd.status === "deprecated" || cmd.status === "archived") : false;
-    const usageCount = cmd ? getUsageCount(cmd) : 0;
+    if (isFolder) {
+      return (
+        <div key={node.path} style={{ marginLeft: indent }}>
+          <DroppableFolder
+            folderPath={node.path}
+            name={node.name}
+            childCount={node.children.length}
+            isExpanded={isExpanded}
+            isOver={false}
+            onToggle={() => toggleFolder(node.path)}
+          >
+            {node.children.map(child => renderTreeNode(child, depth + 1))}
+          </DroppableFolder>
+        </div>
+      );
+    }
+
+    const cmd = node.command;
+    const shortName = depth === 0 ? cmd.name : (cmd.name.split("/").pop() || cmd.name);
+    const isInactive = cmd.status === "deprecated" || cmd.status === "archived";
+    const usageCount = getUsageCount(cmd);
+    const isDragging = activeDragId === cmd.path;
 
     return (
-      <div key={isFolder ? node.path : cmd!.path} style={{ marginLeft: indent }}>
-        <button
-          onClick={() => isFolder ? toggleFolder(node.path) : onSelect(cmd!)}
-          className={`w-full flex items-center gap-2 py-1.5 px-2 text-left rounded-md transition-colors ${
-            isInactive ? "opacity-60 hover:opacity-100" : ""
-          } hover:bg-muted/50`}
-        >
-          {/* 图标 */}
-          {isFolder ? (
-            <Folder className="w-4 h-4 text-primary" />
-          ) : (
-            <Terminal className={`w-4 h-4 ${isInactive ? "text-muted-foreground" : "text-primary"}`} />
-          )}
-          {/* 名称 */}
-          <span className={`font-mono font-medium ${isInactive ? "text-muted-foreground" : "text-primary"}`}>
-            {isFolder ? node.name : shortName}
-          </span>
-          {/* Badge: 数量或版本 */}
-          {isFolder ? (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
-              {node.children.length}
-            </span>
-          ) : cmd?.version && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
-              v{cmd.version.replace(/^["']|["']$/g, '')}
-            </span>
-          )}
-          {/* 使用次数 */}
-          {!isFolder && usageCount > 0 && (
-            <span
-              className={`text-xs font-bold italic tabular-nums ${
-                usageCount >= 100 ? "text-amber-500" :
-                usageCount >= 50 ? "text-orange-500" :
-                usageCount >= 10 ? "text-primary" : "text-muted-foreground"
-              }`}
-              title={`Used ${usageCount} times`}
-            >
-              ×{usageCount}
-            </span>
-          )}
-          {/* Aliases indicator with hover dropdown */}
-          {!isFolder && cmd?.aliases && cmd.aliases.length > 0 && (
-            <span className="relative group/aliases">
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary/70 font-medium">
-                +{cmd.aliases.length}
-              </span>
-              <div className="absolute left-0 top-full mt-1 hidden group-hover/aliases:block z-50 bg-popover border border-border rounded-md shadow-md p-2 min-w-max">
-                <div className="text-xs text-muted-foreground mb-1">Aliases:</div>
-                {cmd.aliases.map((alias, i) => (
-                  <div key={i} className="font-mono text-xs text-primary">{alias}</div>
-                ))}
-              </div>
-            </span>
-          )}
-          <span className="flex-1" />
-          {/* 状态 Badge */}
-          {cmd?.status === "deprecated" && (
-            <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-600">deprecated</span>
-          )}
-          {cmd?.status === "archived" && (
-            <span className="text-xs px-1.5 py-0.5 rounded bg-card-alt text-muted-foreground">archived</span>
-          )}
-          {/* 命令菜单 */}
-          {!isFolder && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <span
-                  role="button"
-                  className="w-4 h-4 flex items-center justify-center cursor-pointer hover:text-primary"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <MoreHorizontal className="w-4 h-4" />
-                </span>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                <DropdownMenuItem onClick={() => onSelect(cmd!)}>
-                  <HelpCircle className="w-4 h-4 mr-2" />
-                  View Details
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => cmd?.changelog && onSelect(cmd, true)}
-                  disabled={!cmd?.changelog}
-                  className={!cmd?.changelog ? "opacity-50" : ""}
-                >
-                  <FileText className="w-4 h-4 mr-2" />
-                  View Changelog
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => invoke("open_in_editor", { path: cmd!.path })}>
-                  <ExternalLink className="w-4 h-4 mr-2" />
-                  Open in Editor
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => navigator.clipboard.writeText(cmd!.path)}>
-                  <Copy className="w-4 h-4 mr-2" />
-                  Copy Path
-                </DropdownMenuItem>
-                {!isInactive && (
-                  <DropdownMenuItem onSelect={() => openMoveDialog(cmd!)}>
-                    <FolderInput className="w-4 h-4 mr-2" />
-                    Move to...
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuSeparator />
-                {isInactive ? (
-                  <DropdownMenuItem onClick={() => handleRestore(cmd!)}>
-                    <RotateCcw className="w-4 h-4 mr-2" />
-                    Restore
-                  </DropdownMenuItem>
-                ) : (
-                  <DropdownMenuItem onClick={() => openDeprecateDialog(cmd!)} className="text-amber-600">
-                    <Archive className="w-4 h-4 mr-2" />
-                    Deprecate
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-        </button>
-        {isFolder && isExpanded && (
-          <div className="space-y-1 mt-1">
-            {node.children.map(child => renderTreeNode(child, depth + 1))}
-          </div>
-        )}
+      <div key={cmd.path} style={{ marginLeft: indent }}>
+        <DraggableCommandItem
+          cmd={cmd}
+          shortName={shortName}
+          usageCount={usageCount}
+          isInactive={isInactive}
+          isDragging={isDragging}
+          onClick={() => onSelect(cmd)}
+          onOpenInEditor={() => invoke("open_in_editor", { path: cmd.path })}
+          onMove={() => openMoveDialog(cmd)}
+          onDeprecate={() => openDeprecateDialog(cmd)}
+          onRestore={() => handleRestore(cmd)}
+        />
       </div>
     );
   };
@@ -2292,9 +2440,21 @@ function CommandsView({
         </div>
       )}
       {viewMode === "tree" && tree.length > 0 && (
-        <div className="space-y-1">
-          {tree.map(node => renderTreeNode(node))}
-        </div>
+        <DndContext sensors={sensors} onDragStart={handleDragStartDnd} onDragEnd={handleDragEndDnd}>
+          <div className="space-y-1">
+            {/* Root drop zone - only shown when dragging */}
+            {activeDragId && <RootDropZone isOver={false} />}
+            {tree.map(node => renderTreeNode(node))}
+          </div>
+          <DragOverlay>
+            {activeDragCmd && (
+              <div className="flex items-center gap-2 py-1.5 px-2 bg-card border border-primary rounded-md shadow-lg">
+                <Terminal className="w-4 h-4 text-primary" />
+                <span className="font-mono font-medium text-primary">{activeDragCmd.name}</span>
+              </div>
+            )}
+          </DragOverlay>
+        </DndContext>
       )}
 
       {statusFiltered.length === 0 && !search && (

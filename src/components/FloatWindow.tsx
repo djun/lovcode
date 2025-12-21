@@ -26,6 +26,7 @@ export function FloatWindow() {
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [isExpanded, setIsExpanded] = useState(false);
   const [expandDirection, setExpandDirection] = useState<"left" | "right">("right");
+  const [snapSide, setSnapSide] = useState<"left" | "right" | null>(null);
   const isDraggingRef = useRef(false);
 
   // 磁吸到边缘
@@ -47,31 +48,31 @@ export function FloatWindow() {
 
     let newX = windowX;
     let newY = windowY;
-    let snapped = false;
+    let snappedSide: "left" | "right" | null = null;
 
     // 左边磁吸
     if (windowX < SNAP_THRESHOLD) {
       newX = 0;
-      snapped = true;
+      snappedSide = "left";
     }
     // 右边磁吸
     else if (screenWidth - (windowX + windowWidth) < SNAP_THRESHOLD) {
       newX = screenWidth - windowWidth;
-      snapped = true;
+      snappedSide = "right";
     }
 
     // 上边磁吸
     if (windowY < SNAP_THRESHOLD) {
       newY = 0;
-      snapped = true;
     }
     // 下边磁吸
     else if (screenHeight - (windowY + windowHeight) < SNAP_THRESHOLD) {
       newY = screenHeight - windowHeight;
-      snapped = true;
     }
 
-    if (snapped) {
+    setSnapSide(snappedSide);
+
+    if (snappedSide !== null || newY !== windowY) {
       await win.setPosition(new LogicalPosition(newX, newY));
     }
   };
@@ -144,8 +145,9 @@ export function FloatWindow() {
         const monitor = await currentMonitor();
 
         const expandedWidth = 280;
-        const collapsedWidth = 48;
-        const height = 320;
+        const expandedHeight = 320;
+        const collapsedWidth = 120;
+        const collapsedHeight = 48;
 
         if (!isExpanded) {
           // 展开
@@ -164,7 +166,7 @@ export function FloatWindow() {
               setExpandDirection("right");
             }
           }
-          await win.setSize(new LogicalSize(expandedWidth, height));
+          await win.setSize(new LogicalSize(expandedWidth, expandedHeight));
         } else {
           // 收起
           if (expandDirection === "left") {
@@ -174,7 +176,7 @@ export function FloatWindow() {
             const windowY = pos.y / scaleFactor;
             await win.setPosition(new LogicalPosition(windowX + (expandedWidth - collapsedWidth), windowY));
           }
-          await win.setSize(new LogicalSize(collapsedWidth, height));
+          await win.setSize(new LogicalSize(collapsedWidth, collapsedHeight));
         }
 
         setIsExpanded(prev => !prev);
@@ -199,47 +201,39 @@ export function FloatWindow() {
     return `${Math.floor(hours / 24)}d ago`;
   };
 
+  // 收缩时的圆角样式
+  const collapsedRounding = snapSide === "left"
+    ? "rounded-r-full" // 靠左边，右边圆
+    : snapSide === "right"
+    ? "rounded-l-full" // 靠右边，左边圆
+    : "rounded-full";  // 未吸附，全圆
+
   return (
     <div className="w-full h-full">
-      <div className="w-full h-full bg-primary text-primary-foreground rounded-xl shadow-2xl overflow-hidden">
+      <div className={`w-full h-full bg-primary text-primary-foreground shadow-2xl overflow-hidden transition-all ${isExpanded ? "rounded-xl" : collapsedRounding}`}>
         {/* Header - click to toggle, drag to move */}
         <div
-          className="flex items-center gap-2 p-3 cursor-pointer select-none"
+          className={`flex items-center gap-2 p-3 cursor-pointer select-none ${isExpanded ? "justify-center" : snapSide === "right" ? "justify-end" : "justify-start"}`}
           onMouseDown={handleMouseDown}
         >
-          <motion.div
-            className="relative shrink-0 flex items-center justify-center w-6 h-6"
-            whileTap={{ scale: 0.9 }}
-          >
-            <ClipboardList className="w-5 h-5" />
-            <AnimatePresence>
-              {items.length > 0 && !isExpanded && (
-                <motion.span
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  exit={{ scale: 0 }}
-                  className="absolute -top-2 -right-2 bg-white text-primary text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center shadow"
-                >
-                  {items.length}
-                </motion.span>
-              )}
-            </AnimatePresence>
-          </motion.div>
-
-          <AnimatePresence>
-            {isExpanded && (
-              <motion.div
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -10 }}
-                transition={{ duration: 0.15 }}
-                className="flex items-center gap-2 flex-1"
-              >
-                <span className="font-medium text-sm flex-1">Review Queue</span>
-                <GripVertical className="w-4 h-4 opacity-50" />
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {isExpanded ? (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="flex items-center gap-2 flex-1"
+            >
+              <ClipboardList className="w-5 h-5 shrink-0" />
+              <span className="font-medium text-sm flex-1">Review Queue</span>
+              <GripVertical className="w-4 h-4 opacity-50" />
+            </motion.div>
+          ) : (
+            <div className={`flex items-center w-full ${snapSide === "right" ? "flex-row-reverse" : ""}`}>
+              <span className="font-medium text-sm flex-1 px-1">Review</span>
+              <span className="w-8 h-8 flex items-center justify-center text-sm font-bold bg-white/20 rounded-full shrink-0">
+                {items.length}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Expanded content */}
