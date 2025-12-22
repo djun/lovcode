@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.0
+
+### Minor Changes
+
+- feat(queue): 添加全局自增序号并优化消息列表显示
+  fix(queue): 消息队列按终端标识去重
+
 ## 0.9.0
 
 ### Minor Changes
