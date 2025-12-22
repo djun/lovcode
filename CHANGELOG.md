@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.0
+
+### Minor Changes
+
+- 新增悬浮窗功能、设置增强、命令管理改进
+
 ## 0.8.0
 
 ### Minor Changes
