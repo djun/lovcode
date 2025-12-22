@@ -107,7 +107,7 @@ export const useAppConfig = () => useContext(AppConfigContext);
 // Types & Config
 // ============================================================================
 
-type FeatureType = "chat" | "settings" | "commands" | "mcp" | "skills" | "hooks" | "sub-agents" | "output-styles" | "marketplace" | "kb-distill" | "kb-reference";
+type FeatureType = "chat" | "projects" | "settings" | "commands" | "mcp" | "skills" | "hooks" | "sub-agents" | "output-styles" | "marketplace" | "kb-distill" | "kb-reference";
 
 interface FeatureConfig {
   type: FeatureType;
@@ -118,12 +118,14 @@ interface FeatureConfig {
   group: "history" | "config" | "marketplace" | "knowledge";
 }
 
-// Group 1: Projects (chat history)
+// Group 1: History & Projects
 // Group 2: Configuration
 // Group 3: Marketplace
 const FEATURES: FeatureConfig[] = [
-  // Projects
-  { type: "chat", label: "Projects", icon: "💬", description: "Browse conversation history", available: true, group: "history" },
+  // History
+  { type: "chat", label: "Chats", icon: "💬", description: "Browse conversation history", available: true, group: "history" },
+  // Projects (parallel development)
+  { type: "projects", label: "Projects", icon: "📁", description: "Parallel development projects", available: true, group: "history" },
   // Knowledge (collapsible submenu)
   { type: "kb-reference", label: "Reference", icon: "📖", description: "Platform docs", available: true, group: "knowledge" },
   { type: "kb-distill", label: "Distill (CC)", icon: "💡", description: "Experience summaries", available: true, group: "knowledge" },
@@ -296,6 +298,7 @@ const TEMPLATE_CATEGORIES: { key: TemplateCategory; label: string; icon: string 
 
 type View =
   | { type: "home" }
+  | { type: "projects" }
   | { type: "chat-projects" }
   | { type: "chat-sessions"; projectId: string; projectPath: string }
   | { type: "chat-messages"; projectId: string; sessionId: string; summary: string | null }
@@ -479,7 +482,9 @@ function App() {
   const currentFeature: FeatureType | null =
     view.type === "chat-projects" || view.type === "chat-sessions" || view.type === "chat-messages"
       ? "chat"
-      : view.type === "settings"
+      : view.type === "projects"
+        ? "projects"
+        : view.type === "settings"
         ? "settings"
         : view.type === "commands" || view.type === "command-detail"
           ? "commands"
@@ -507,6 +512,9 @@ function App() {
     switch (feature) {
       case "chat":
         navigate({ type: "chat-projects" });
+        break;
+      case "projects":
+        navigate({ type: "projects" });
         break;
       case "settings":
         navigate({ type: "settings" });
@@ -753,6 +761,10 @@ function App() {
         <main className="flex-1 overflow-auto">
         {view.type === "home" && (
           <Home onFeatureClick={handleFeatureClick} />
+        )}
+
+        {view.type === "projects" && (
+          <ProjectsView />
         )}
 
         {view.type === "chat-projects" && (
@@ -1175,7 +1187,7 @@ function Home({ onFeatureClick }: { onFeatureClick: (feature: FeatureType) => vo
       {stats && (
         <div className="flex gap-3 mb-12">
           {[
-            { value: stats.projects, label: "Projects" },
+            { value: stats.projects, label: "Workspaces" },
             { value: stats.sessions, label: "Sessions" },
             { value: stats.commands, label: "Commands" },
           ].map((stat) => (
@@ -1230,6 +1242,33 @@ function BrowseMarketplaceButton({ onClick }: { onClick?: () => void }) {
       <Store className="w-4 h-4" />
       <span>Marketplace</span>
     </button>
+  );
+}
+
+// ============================================================================
+// Projects Feature (Parallel Development)
+// ============================================================================
+
+function ProjectsView() {
+  return (
+    <div className="h-full overflow-auto p-6">
+      <div className="max-w-4xl mx-auto">
+        <header className="mb-8">
+          <h1 className="font-serif text-3xl font-bold text-ink mb-2">Projects</h1>
+          <p className="text-muted-foreground">
+            Manage your parallel development projects
+          </p>
+        </header>
+
+        <div className="bg-card border border-border rounded-xl p-8 text-center">
+          <span className="text-4xl mb-4 block">📁</span>
+          <h2 className="font-serif text-xl font-semibold text-ink mb-2">Coming Soon</h2>
+          <p className="text-muted-foreground max-w-md mx-auto">
+            Project management for parallel development workflows will be available in a future update.
+          </p>
+        </div>
+      </div>
+    </div>
   );
 }
 
