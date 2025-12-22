@@ -2,6 +2,8 @@
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
+@custom-variant hover (&:hover, &[data-sim-hover="true"]);
+@custom-variant group-hover (.group:hover &, .group[data-sim-hover="true"] &);
 @plugin "@tailwindcss/typography";
 
 @theme {

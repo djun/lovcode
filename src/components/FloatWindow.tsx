@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { ClipboardList, X, Terminal, Sparkles } from "lucide-react";
+import { ClipboardList, X, Sparkles } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow, currentMonitor, LogicalSize, LogicalPosition } from "@tauri-apps/api/window";
@@ -17,11 +17,11 @@ function GlowButton({ children, onClick, className = "" }: {
   return (
     <motion.button
       onClick={onClick}
-      whileHover={{ scale: 1.05 }}
       whileTap={{ scale: 0.95 }}
       className={`
         relative p-2 rounded-lg bg-white/10
         transition-all duration-300
+        hover:scale-105
         hover:bg-white/20
         hover:shadow-[0_0_20px_rgba(255,255,255,0.4),0_0_40px_rgba(204,120,92,0.3)]
         ${className}
@@ -38,6 +38,7 @@ function GlowButton({ children, onClick, className = "" }: {
 
 export interface ReviewItem {
   id: string;
+  seq: number;  // Global auto-increment sequence number
   title: string;
   project?: string;
   timestamp: number;
@@ -102,6 +103,8 @@ export function FloatWindow() {
   useEffect(() => {
     let lastCursor = "default";
     let lastHoveredItem: string | null = null;
+    let lastHoverTarget: HTMLElement | null = null;
+    let lastHoverGroup: HTMLElement | null = null;
     let intervalId: number | null = null;
     let inFlight = false;
     type CursorInWindow = { supported: boolean; in_window: boolean; x: number; y: number };
@@ -205,18 +208,44 @@ export function FloatWindow() {
         if (isInWindow && relX !== null && relY !== null) {
           // 使用 document.elementFromPoint 获取鼠标下的元素
           const element = document.elementFromPoint(relX, relY) as HTMLElement | null;
-          let itemId = element?.closest('[data-item-id]')?.getAttribute("data-item-id") ?? null;
+          let itemElement = element?.closest('[data-item-id]') as HTMLElement | null;
+          let itemId = itemElement?.dataset.itemId ?? null;
 
           if (!itemId) {
             // Fallback for unfocused WebKit: manual hit-test by rects.
             const itemElements = document.querySelectorAll<HTMLElement>('[data-item-id]');
-            for (const itemElement of itemElements) {
-              const rect = itemElement.getBoundingClientRect();
+            for (const candidate of itemElements) {
+              const rect = candidate.getBoundingClientRect();
               if (relX >= rect.left && relX <= rect.right && relY >= rect.top && relY <= rect.bottom) {
-                itemId = itemElement.dataset.itemId ?? null;
+                itemId = candidate.dataset.itemId ?? null;
+                itemElement = candidate;
                 break;
               }
             }
+          }
+
+          const hoverTarget = element?.closest<HTMLElement>(
+            '[data-hover-target], [data-item-id], button, [role="button"], a, .cursor-pointer'
+          ) ?? itemElement ?? null;
+          const hoverGroup = hoverTarget?.closest<HTMLElement>('.group') ?? null;
+
+          if (hoverTarget !== lastHoverTarget) {
+            if (lastHoverTarget) {
+              lastHoverTarget.removeAttribute("data-sim-hover");
+            }
+            if (hoverTarget) {
+              hoverTarget.setAttribute("data-sim-hover", "true");
+            }
+            lastHoverTarget = hoverTarget;
+          }
+          if (hoverGroup !== lastHoverGroup) {
+            if (lastHoverGroup) {
+              lastHoverGroup.removeAttribute("data-sim-hover");
+            }
+            if (hoverGroup) {
+              hoverGroup.setAttribute("data-sim-hover", "true");
+            }
+            lastHoverGroup = hoverGroup;
           }
 
           if (itemId !== lastHoveredItem) {
@@ -225,9 +254,7 @@ export function FloatWindow() {
           }
 
           // 设置光标
-          const isClickable = Boolean(
-            element?.closest('.cursor-pointer, button, [role="button"], a, [data-item-id]')
-          ) || itemId !== null;
+          const isClickable = hoverTarget !== null || itemId !== null;
           const newCursor = isClickable ? "pointer" : "default";
 
           if (newCursor !== lastCursor) {
@@ -236,6 +263,14 @@ export function FloatWindow() {
           }
         } else {
           // 鼠标离开窗口
+          if (lastHoverTarget) {
+            lastHoverTarget.removeAttribute("data-sim-hover");
+            lastHoverTarget = null;
+          }
+          if (lastHoverGroup) {
+            lastHoverGroup.removeAttribute("data-sim-hover");
+            lastHoverGroup = null;
+          }
           if (lastHoveredItem !== null) {
             lastHoveredItem = null;
             setHoveredId(null);
@@ -337,82 +372,8 @@ export function FloatWindow() {
 
   // 组件挂载时拉取当前队列，并监听后续更新
   useEffect(() => {
-    // 拉取当前队列（热刷新后恢复数据）
-    invoke<ReviewItem[]>("get_review_queue").then((queue) => {
-      if (queue.length === 0) {
-        // 添加示例消息供测试
-        const now = Math.floor(Date.now() / 1000);
-        setItems([
-          {
-            id: "example-1",
-            title: "✓ Build completed successfully",
-            project: "lovcode",
-            timestamp: now,
-            tmux_session: "main",
-            tmux_window: "1",
-            tmux_pane: "0",
-          },
-          {
-            id: "example-2",
-            title: "⚠ Tests need review",
-            project: "api-server",
-            timestamp: now - 120,
-            tmux_session: "dev",
-            tmux_window: "2",
-            tmux_pane: "1",
-          },
-          {
-            id: "example-3",
-            title: "✓ Deployment ready",
-            project: "frontend",
-            timestamp: now - 300,
-            tmux_session: "prod",
-            tmux_window: "1",
-            tmux_pane: "0",
-          },
-          {
-            id: "example-4",
-            title: "📝 Code review requested",
-            project: "shared-lib",
-            timestamp: now - 600,
-            tmux_session: "main",
-            tmux_window: "3",
-            tmux_pane: "0",
-          },
-          {
-            id: "example-5",
-            title: "🔄 Sync completed",
-            project: "config",
-            timestamp: now - 900,
-            tmux_session: "dev",
-            tmux_window: "1",
-            tmux_pane: "2",
-          },
-          {
-            id: "example-6",
-            title: "✓ Migration finished",
-            project: "database",
-            timestamp: now - 1800,
-            tmux_session: "db",
-            tmux_window: "1",
-            tmux_pane: "0",
-          },
-          {
-            id: "example-7",
-            title: "⚡ Performance check done",
-            project: "benchmarks",
-            timestamp: now - 3600,
-            tmux_session: "perf",
-            tmux_window: "1",
-            tmux_pane: "0",
-          },
-        ]);
-      } else {
-        setItems(queue);
-      }
-    }).catch(console.error);
+    invoke<ReviewItem[]>("get_review_queue").then(setItems).catch(console.error);
 
-    // 监听后续更新
     const unlisten = listen<ReviewItem[]>("review-queue-update", (event) => {
       setItems(event.payload);
     });
@@ -683,17 +644,17 @@ export function FloatWindow() {
                         isHovered ? "bg-white/20" : "bg-white/10"
                       }`}
                     >
-                      {/* tmux indicator */}
-                      {item.tmux_session && (
-                        <Terminal className="w-4 h-4 shrink-0 opacity-70" />
-                      )}
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{item.title}</p>
-                        <p className="text-xs opacity-70 truncate">
-                          {item.tmux_session && (
-                            <span>{item.tmux_session}:{item.tmux_window}.{item.tmux_pane} · </span>
+                        <p className="text-sm font-medium truncate">
+                          {item.title}
+                          {item.tmux_window && (
+                            <span className="text-xs opacity-60 font-normal ml-1">
+                              ({item.tmux_window}, {item.tmux_pane})
+                            </span>
                           )}
-                          {formatTime(item.timestamp)}
+                        </p>
+                        <p className="text-xs opacity-70 truncate">
+                          #{item.seq} · {formatTime(item.timestamp)}
                         </p>
                       </div>
                       <motion.button

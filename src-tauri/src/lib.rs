@@ -103,6 +103,35 @@ static SEARCH_INDEX: Mutex<Option<SearchIndex>> = Mutex::new(None);
 // Global review queue for notification server
 static REVIEW_QUEUE: LazyLock<Mutex<Vec<ReviewItem>>> = LazyLock::new(|| Mutex::new(Vec::new()));
 
+// Global auto-increment sequence number for review items
+static REVIEW_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+fn get_review_seq_path() -> PathBuf {
+    dirs::data_local_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("lovcode")
+        .join("review_seq")
+}
+
+fn load_review_seq() {
+    if let Ok(content) = std::fs::read_to_string(get_review_seq_path()) {
+        if let Ok(seq) = content.trim().parse::<u64>() {
+            REVIEW_SEQ.store(seq, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+}
+
+fn next_review_seq() -> u64 {
+    let seq = REVIEW_SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    // Persist to file
+    let path = get_review_seq_path();
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(&path, (seq + 1).to_string());
+    seq
+}
+
 // Notification server port
 const NOTIFY_SERVER_PORT: u16 = 23567;
 
@@ -253,6 +282,7 @@ pub struct McpServer {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ReviewItem {
     pub id: String,
+    pub seq: u64,  // Global auto-increment sequence number
     pub title: String,
     pub project: Option<String>,
     pub timestamp: u64,
@@ -3077,6 +3107,7 @@ fn start_notify_server(app_handle: tauri::AppHandle) {
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
                         .as_millis()),
+                    seq: next_review_seq(),
                     title: payload.title,
                     project: payload.project,
                     timestamp: std::time::SystemTime::now()
@@ -3146,6 +3177,9 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder, PredefinedMenuItem};
+
+            // Load persisted review sequence number
+            load_review_seq();
 
             // Start notification HTTP server
             start_notify_server(app.handle().clone());
