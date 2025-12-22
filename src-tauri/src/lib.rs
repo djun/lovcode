@@ -21,9 +21,11 @@ use warp::Filter;
 #[cfg(target_os = "macos")]
 use cocoa::appkit::{NSWindow, NSWindowCollectionBehavior};
 #[cfg(target_os = "macos")]
-use cocoa::base::id;
+use cocoa::base::{id, nil};
 #[cfg(target_os = "macos")]
-use objc::runtime::YES;
+use objc::runtime::{BOOL, YES};
+#[cfg(target_os = "macos")]
+use objc::*;
 
 // Global jieba instance for Chinese tokenization
 static JIEBA: LazyLock<Jieba> = LazyLock::new(|| Jieba::new());
@@ -2829,9 +2831,134 @@ fn setup_float_window_macos(app: &tauri::App) {
                 // 关键：忽略鼠标事件不会让窗口获得焦点
                 ns_win.setIgnoresMouseEvents_(cocoa::base::NO);
 
+                // 禁用 cursor rects，防止系统重置光标
+                let _: () = msg_send![ns_win, disableCursorRects];
+
                 println!("[DEBUG] Float window macOS properties configured with NonactivatingPanel style");
             }
         }
+    }
+}
+
+// ============================================================================
+// Cursor Control (macOS)
+// ============================================================================
+
+#[derive(Serialize)]
+struct CursorInWindow {
+    supported: bool,
+    in_window: bool,
+    x: f64,
+    y: f64,
+}
+
+/// 获取鼠标在指定窗口内容区内的坐标（逻辑坐标，左上角为原点）
+#[tauri::command]
+fn get_cursor_position_in_window(app_handle: tauri::AppHandle, label: String) -> CursorInWindow {
+    #[cfg(target_os = "macos")]
+    {
+        use tauri::Manager;
+
+        let mut result = CursorInWindow {
+            supported: true,
+            in_window: false,
+            x: 0.0,
+            y: 0.0,
+        };
+
+        if let Some(window) = app_handle.get_webview_window(&label) {
+            if let Ok(ns_window) = window.ns_window() {
+                unsafe {
+                    let ns_win: id = ns_window as id;
+                    let location: cocoa::foundation::NSPoint = msg_send![class!(NSEvent), mouseLocation];
+                    let window_point: cocoa::foundation::NSPoint =
+                        msg_send![ns_win, convertPointFromScreen: location];
+                    let content_view: id = msg_send![ns_win, contentView];
+
+                    if content_view != nil {
+                        let view_point: cocoa::foundation::NSPoint =
+                            msg_send![content_view, convertPoint: window_point fromView: nil];
+                        let view_bounds: cocoa::foundation::NSRect = msg_send![content_view, bounds];
+                        let width = view_bounds.size.width;
+                        let height = view_bounds.size.height;
+                        let local_x = view_point.x - view_bounds.origin.x;
+                        let local_y = view_point.y - view_bounds.origin.y;
+                        let flipped: BOOL = msg_send![content_view, isFlipped];
+
+                        if local_x >= 0.0
+                            && local_x <= width
+                            && local_y >= 0.0
+                            && local_y <= height
+                        {
+                            result.in_window = true;
+                            result.x = local_x;
+                            result.y = if flipped == YES { local_y } else { height - local_y };
+                        }
+                    }
+                }
+            }
+        }
+
+        result
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        CursorInWindow {
+            supported: false,
+            in_window: false,
+            x: 0.0,
+            y: 0.0,
+        }
+    }
+}
+
+/// 获取当前鼠标位置（全局屏幕坐标）
+#[tauri::command]
+fn get_cursor_position() -> (f64, f64) {
+    #[cfg(target_os = "macos")]
+    {
+        unsafe {
+            let location: cocoa::foundation::NSPoint = msg_send![class!(NSEvent), mouseLocation];
+            // macOS 的 y 坐标是从屏幕底部开始的，需要转换
+            // 获取主屏幕高度
+            let screen: id = msg_send![class!(NSScreen), mainScreen];
+            let frame: cocoa::foundation::NSRect = msg_send![screen, frame];
+            let screen_height = frame.size.height;
+            // 转换 y 坐标：从底部起算 -> 从顶部起算
+            (location.x, screen_height - location.y)
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        (0.0, 0.0)
+    }
+}
+
+/// 强制设置系统光标，绕过 WebKit 的 key window 限制
+#[tauri::command]
+fn set_cursor(cursor_type: String) {
+    #[cfg(target_os = "macos")]
+    {
+        unsafe {
+            let cursor_class: id = msg_send![class!(NSCursor), class];
+            let cursor: id = match cursor_type.as_str() {
+                "pointer" | "hand" => msg_send![cursor_class, pointingHandCursor],
+                "text" => msg_send![cursor_class, IBeamCursor],
+                "crosshair" => msg_send![cursor_class, crosshairCursor],
+                "move" => msg_send![cursor_class, openHandCursor],
+                "grab" => msg_send![cursor_class, openHandCursor],
+                "grabbing" => msg_send![cursor_class, closedHandCursor],
+                "not-allowed" => msg_send![cursor_class, operationNotAllowedCursor],
+                "resize-ew" | "ew-resize" | "col-resize" => msg_send![cursor_class, resizeLeftRightCursor],
+                "resize-ns" | "ns-resize" | "row-resize" => msg_send![cursor_class, resizeUpDownCursor],
+                _ => msg_send![cursor_class, arrowCursor], // default
+            };
+            let _: () = msg_send![cursor, set];
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = cursor_type; // suppress unused warning
     }
 }
 
@@ -2963,9 +3090,18 @@ fn start_notify_server(app_handle: tauri::AppHandle) {
                     project_path: payload.project_path,
                 };
 
-                // Add to queue
+                // Add to queue (dedupe by terminal identity: same tmux session/window/pane)
                 {
                     let mut queue = REVIEW_QUEUE.lock().unwrap();
+                    // Remove existing items with same terminal identity
+                    if item.tmux_session.is_some() || item.tmux_window.is_some() || item.tmux_pane.is_some() {
+                        queue.retain(|existing| {
+                            // Keep if terminal identity differs
+                            existing.tmux_session != item.tmux_session
+                                || existing.tmux_window != item.tmux_window
+                                || existing.tmux_pane != item.tmux_pane
+                        });
+                    }
                     queue.push(item.clone());
                 }
 
@@ -3235,7 +3371,10 @@ pub fn run() {
             get_reference_doc,
             emit_review_queue,
             get_review_queue,
-            navigate_to_tmux_pane
+            navigate_to_tmux_pane,
+            set_cursor,
+            get_cursor_position_in_window,
+            get_cursor_position
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

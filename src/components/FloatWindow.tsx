@@ -1,9 +1,36 @@
 import { useState, useEffect, useRef } from "react";
-import { ClipboardList, X, Terminal } from "lucide-react";
+import { ClipboardList, X, Terminal, Sparkles } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow, currentMonitor, LogicalSize, LogicalPosition } from "@tauri-apps/api/window";
 import { motion, AnimatePresence } from "framer-motion";
+
+// ============================================================================
+// GlowButton - Hover 发光按钮组件
+// ============================================================================
+
+function GlowButton({ children, onClick, className = "" }: {
+  children: React.ReactNode;
+  onClick?: (e: React.MouseEvent) => void;
+  className?: string;
+}) {
+  return (
+    <motion.button
+      onClick={onClick}
+      whileHover={{ scale: 1.05 }}
+      whileTap={{ scale: 0.95 }}
+      className={`
+        relative p-2 rounded-lg bg-white/10
+        transition-all duration-300
+        hover:bg-white/20
+        hover:shadow-[0_0_20px_rgba(255,255,255,0.4),0_0_40px_rgba(204,120,92,0.3)]
+        ${className}
+      `}
+    >
+      {children}
+    </motion.button>
+  );
+}
 
 // ============================================================================
 // Types
@@ -65,28 +92,174 @@ export function FloatWindow() {
   const [isExpanded, setIsExpanded] = useState(savedState.isExpanded ?? false);
   const [expandDirection, setExpandDirection] = useState<"left" | "right">(savedState.expandDirection ?? "right");
   const [snapSide, setSnapSide] = useState<"left" | "right" | null>(savedState.snapSide ?? null);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const isDraggingRef = useRef(false);
   const initializedRef = useRef(false);
 
-  // 修复无焦点时光标不显示手型的问题
-  // WebKit 在非活动窗口中不会自动更新 CSS cursor，需要手动强制设置
+  // 修复无焦点时 hover 效果不工作的问题
+  // macOS WebKit 在非焦点窗口中不触发 mousemove 事件
+  // 解决方案：轮询全局鼠标位置，手动计算 hover 状态
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      // 检查元素或其父元素是否有 cursor-pointer 类或是可点击的
-      const isClickable = target.closest('.cursor-pointer, button, [role="button"], a');
-      document.body.style.cursor = isClickable ? 'pointer' : 'default';
+    let lastCursor = "default";
+    let lastHoveredItem: string | null = null;
+    let intervalId: number | null = null;
+    let inFlight = false;
+    type CursorInWindow = { supported: boolean; in_window: boolean; x: number; y: number };
+
+    const getBoundsCandidates = async () => {
+      const candidates: Array<{ x: number; y: number; width: number; height: number }> = [];
+      const domBounds = {
+        x: window.screenX,
+        y: window.screenY,
+        width: window.innerWidth,
+        height: window.innerHeight,
+      };
+      if (
+        Number.isFinite(domBounds.x) &&
+        Number.isFinite(domBounds.y) &&
+        domBounds.width > 0 &&
+        domBounds.height > 0
+      ) {
+        candidates.push(domBounds);
+      }
+
+      try {
+        const win = getCurrentWindow();
+        const scale = await win.scaleFactor();
+        const windowPos = (await win.innerPosition()).toLogical(scale);
+        const windowSize = (await win.innerSize()).toLogical(scale);
+        candidates.push({
+          x: windowPos.x,
+          y: windowPos.y,
+          width: windowSize.width,
+          height: windowSize.height,
+        });
+      } catch {
+        // ignore errors
+      }
+
+      return candidates;
     };
 
-    const handleMouseLeave = () => {
-      document.body.style.cursor = 'default';
+    const getFallbackRelPos = async () => {
+      const [rawCursorX, rawCursorY] = await invoke<[number, number]>("get_cursor_position");
+      const scale = window.devicePixelRatio || 1;
+      const cursorCandidates = [
+        { x: rawCursorX, y: rawCursorY },
+        { x: rawCursorX / scale, y: rawCursorY / scale },
+      ];
+      const boundsCandidates = await getBoundsCandidates();
+
+      let relX = 0;
+      let relY = 0;
+      let isInWindow = false;
+      for (const bounds of boundsCandidates) {
+        for (const cursor of cursorCandidates) {
+          const rx = cursor.x - bounds.x;
+          const ry = cursor.y - bounds.y;
+          if (rx >= 0 && rx <= bounds.width && ry >= 0 && ry <= bounds.height) {
+            relX = rx;
+            relY = ry;
+            isInWindow = true;
+            break;
+          }
+        }
+        if (isInWindow) break;
+      }
+
+      return { relX, relY, isInWindow };
     };
 
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseleave', handleMouseLeave);
+    const checkCursorPosition = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        let relX: number | null = null;
+        let relY: number | null = null;
+        let isInWindow = false;
+        let nativeSupported = false;
+
+        try {
+          const nativePos = await invoke<CursorInWindow>("get_cursor_position_in_window", {
+            label: "float",
+          });
+          if (nativePos?.supported) {
+            nativeSupported = true;
+            if (nativePos.in_window) {
+              relX = nativePos.x;
+              relY = nativePos.y;
+              isInWindow = true;
+            }
+          }
+        } catch {
+          // ignore errors
+        }
+
+        if (!nativeSupported) {
+          const fallback = await getFallbackRelPos();
+          relX = fallback.relX;
+          relY = fallback.relY;
+          isInWindow = fallback.isInWindow;
+        }
+
+        if (isInWindow && relX !== null && relY !== null) {
+          // 使用 document.elementFromPoint 获取鼠标下的元素
+          const element = document.elementFromPoint(relX, relY) as HTMLElement | null;
+          let itemId = element?.closest('[data-item-id]')?.getAttribute("data-item-id") ?? null;
+
+          if (!itemId) {
+            // Fallback for unfocused WebKit: manual hit-test by rects.
+            const itemElements = document.querySelectorAll<HTMLElement>('[data-item-id]');
+            for (const itemElement of itemElements) {
+              const rect = itemElement.getBoundingClientRect();
+              if (relX >= rect.left && relX <= rect.right && relY >= rect.top && relY <= rect.bottom) {
+                itemId = itemElement.dataset.itemId ?? null;
+                break;
+              }
+            }
+          }
+
+          if (itemId !== lastHoveredItem) {
+            lastHoveredItem = itemId;
+            setHoveredId(itemId);
+          }
+
+          // 设置光标
+          const isClickable = Boolean(
+            element?.closest('.cursor-pointer, button, [role="button"], a, [data-item-id]')
+          ) || itemId !== null;
+          const newCursor = isClickable ? "pointer" : "default";
+
+          if (newCursor !== lastCursor) {
+            lastCursor = newCursor;
+            invoke("set_cursor", { cursorType: newCursor });
+          }
+        } else {
+          // 鼠标离开窗口
+          if (lastHoveredItem !== null) {
+            lastHoveredItem = null;
+            setHoveredId(null);
+          }
+          if (lastCursor !== "default") {
+            lastCursor = "default";
+            invoke("set_cursor", { cursorType: "default" });
+          }
+        }
+      } catch {
+        // ignore errors
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    // 开始轮询（非焦点窗口可能暂停 rAF）
+    intervalId = window.setInterval(checkCursorPosition, 50);
+    checkCursorPosition();
+
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseleave', handleMouseLeave);
+      if (intervalId !== null) {
+        clearInterval(intervalId);
+      }
     };
   }, []);
 
@@ -168,15 +341,72 @@ export function FloatWindow() {
     invoke<ReviewItem[]>("get_review_queue").then((queue) => {
       if (queue.length === 0) {
         // 添加示例消息供测试
-        setItems([{
-          id: "example-1",
-          title: "✓ Example Project",
-          project: "example",
-          timestamp: Math.floor(Date.now() / 1000),
-          tmux_session: "main",
-          tmux_window: "1",
-          tmux_pane: "0",
-        }]);
+        const now = Math.floor(Date.now() / 1000);
+        setItems([
+          {
+            id: "example-1",
+            title: "✓ Build completed successfully",
+            project: "lovcode",
+            timestamp: now,
+            tmux_session: "main",
+            tmux_window: "1",
+            tmux_pane: "0",
+          },
+          {
+            id: "example-2",
+            title: "⚠ Tests need review",
+            project: "api-server",
+            timestamp: now - 120,
+            tmux_session: "dev",
+            tmux_window: "2",
+            tmux_pane: "1",
+          },
+          {
+            id: "example-3",
+            title: "✓ Deployment ready",
+            project: "frontend",
+            timestamp: now - 300,
+            tmux_session: "prod",
+            tmux_window: "1",
+            tmux_pane: "0",
+          },
+          {
+            id: "example-4",
+            title: "📝 Code review requested",
+            project: "shared-lib",
+            timestamp: now - 600,
+            tmux_session: "main",
+            tmux_window: "3",
+            tmux_pane: "0",
+          },
+          {
+            id: "example-5",
+            title: "🔄 Sync completed",
+            project: "config",
+            timestamp: now - 900,
+            tmux_session: "dev",
+            tmux_window: "1",
+            tmux_pane: "2",
+          },
+          {
+            id: "example-6",
+            title: "✓ Migration finished",
+            project: "database",
+            timestamp: now - 1800,
+            tmux_session: "db",
+            tmux_window: "1",
+            tmux_pane: "0",
+          },
+          {
+            id: "example-7",
+            title: "⚡ Performance check done",
+            project: "benchmarks",
+            timestamp: now - 3600,
+            tmux_session: "perf",
+            tmux_window: "1",
+            tmux_pane: "0",
+          },
+        ]);
       } else {
         setItems(queue);
       }
@@ -395,6 +625,14 @@ export function FloatWindow() {
             >
               <ClipboardList className="w-5 h-5 shrink-0" />
               <span className="font-medium text-sm flex-1">Lovcode Messages</span>
+              <GlowButton
+                onClick={(e) => {
+                  e.stopPropagation();
+                  // 发光按钮功能预留
+                }}
+              >
+                <Sparkles className="w-4 h-4" />
+              </GlowButton>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -431,40 +669,48 @@ export function FloatWindow() {
 
               {/* Items list */}
               <div className="space-y-2 max-h-56 overflow-y-auto">
-                {items.map((item, index) => (
-                  <motion.div
-                    key={item.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.05 }}
-                    onClick={() => handleItemClick(item)}
-                    className="group flex items-center gap-2 p-2 rounded-lg transition-colors cursor-pointer bg-white/10 hover:bg-white/20"
-                  >
-                    {/* tmux indicator */}
-                    {item.tmux_session && (
-                      <Terminal className="w-4 h-4 shrink-0 opacity-70" />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{item.title}</p>
-                      <p className="text-xs opacity-70 truncate">
-                        {item.tmux_session && (
-                          <span>{item.tmux_session}:{item.tmux_window}.{item.tmux_pane} · </span>
-                        )}
-                        {formatTime(item.timestamp)}
-                      </p>
-                    </div>
-                    <motion.button
-                      whileTap={{ scale: 0.9 }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDismiss(item.id);
-                      }}
-                      className="p-1 rounded transition-opacity opacity-0 group-hover:opacity-100 group-hover:bg-white/10"
+                {items.map((item, index) => {
+                  const isHovered = hoveredId === item.id;
+                  return (
+                    <motion.div
+                      key={item.id}
+                      data-item-id={item.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.05 }}
+                      onClick={() => handleItemClick(item)}
+                      className={`flex items-center gap-2 p-2 rounded-lg transition-colors cursor-pointer ${
+                        isHovered ? "bg-white/20" : "bg-white/10"
+                      }`}
                     >
-                      <X className="w-3.5 h-3.5" />
-                    </motion.button>
-                  </motion.div>
-                ))}
+                      {/* tmux indicator */}
+                      {item.tmux_session && (
+                        <Terminal className="w-4 h-4 shrink-0 opacity-70" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{item.title}</p>
+                        <p className="text-xs opacity-70 truncate">
+                          {item.tmux_session && (
+                            <span>{item.tmux_session}:{item.tmux_window}.{item.tmux_pane} · </span>
+                          )}
+                          {formatTime(item.timestamp)}
+                        </p>
+                      </div>
+                      <motion.button
+                        whileTap={{ scale: 0.9 }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDismiss(item.id);
+                        }}
+                        className={`p-1 rounded transition-opacity ${
+                          isHovered ? "opacity-100 bg-white/10" : "opacity-0"
+                        }`}
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </motion.button>
+                    </motion.div>
+                  );
+                })}
               </div>
 
               {items.length === 0 && (
