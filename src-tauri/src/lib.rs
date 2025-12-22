@@ -2855,44 +2855,52 @@ fn navigate_to_tmux_pane(session: String, window: String, pane: String) -> Resul
 
     #[cfg(target_os = "macos")]
     {
-        // 通过 TTY 匹配 iTerm2 tab
-        // 每个 iTerm2 tab 的 session 有一个 tty，对应 tmux pane 的 tty
+        // 参考 Lovnotifier 的 activate.sh 实现
+        // 遍历 windows -> tabs -> sessions，通过 session name 匹配 tmux session
         let script = format!(r#"
-            tell application "iTerm"
+            tell application "iTerm2"
                 activate
-                tell current window
-                    set targetTTY to "{}"
-                    set tabIndex to 1
-                    repeat with t in tabs
-                        try
-                            set sessionTTY to tty of current session of t
-                            if sessionTTY is equal to targetTTY then
-                                select tab tabIndex
-                                return "found by tty:" & tabIndex
+                repeat with w in windows
+                    repeat with t in tabs of w
+                        repeat with s in sessions of t
+                            if name of s contains "{}" then
+                                select w
+                                select t
+                                select s
+                                return "FOUND"
                             end if
-                        end try
-                        set tabIndex to tabIndex + 1
+                        end repeat
                     end repeat
-                    return "not found, target tty: " & targetTTY
-                end tell
+                end repeat
+                return "NOT_FOUND"
             end tell
-        "#, pane_tty);
+        "#, session);
 
-        println!("[DEBUG][navigate_to_tmux_pane] iTerm2 查找 tab: tty='{}'", pane_tty);
+        println!("[DEBUG][navigate_to_tmux_pane] iTerm2 查找 session name 包含 '{}'", session);
         let result = std::process::Command::new("osascript")
             .args(["-e", &script])
             .output();
 
         match &result {
             Ok(output) => {
-                println!("[DEBUG][navigate_to_tmux_pane] iTerm2 结果: status={}, stdout={}, stderr={}",
-                    output.status,
-                    String::from_utf8_lossy(&output.stdout).trim(),
-                    String::from_utf8_lossy(&output.stderr));
+                println!("[DEBUG][navigate_to_tmux_pane] iTerm2 结果: {}",
+                    String::from_utf8_lossy(&output.stdout).trim());
             }
             Err(e) => {
                 println!("[DEBUG][navigate_to_tmux_pane] iTerm2 错误: {}", e);
             }
+        }
+
+        // 切换 tmux 窗口和 pane
+        if !window.is_empty() {
+            let _ = std::process::Command::new("tmux")
+                .args(["select-window", "-t", &format!("{}:{}", session, window)])
+                .output();
+        }
+        if !pane.is_empty() {
+            let _ = std::process::Command::new("tmux")
+                .args(["select-pane", "-t", &format!("{}:{}.{}", session, window, pane)])
+                .output();
         }
     }
 
