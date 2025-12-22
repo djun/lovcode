@@ -65,10 +65,30 @@ export function FloatWindow() {
   const [isExpanded, setIsExpanded] = useState(savedState.isExpanded ?? false);
   const [expandDirection, setExpandDirection] = useState<"left" | "right">(savedState.expandDirection ?? "right");
   const [snapSide, setSnapSide] = useState<"left" | "right" | null>(savedState.snapSide ?? null);
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const isDraggingRef = useRef(false);
   const initializedRef = useRef(false);
 
+  // 修复无焦点时光标不显示手型的问题
+  // WebKit 在非活动窗口中不会自动更新 CSS cursor，需要手动强制设置
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      // 检查元素或其父元素是否有 cursor-pointer 类或是可点击的
+      const isClickable = target.closest('.cursor-pointer, button, [role="button"], a');
+      document.body.style.cursor = isClickable ? 'pointer' : 'default';
+    };
+
+    const handleMouseLeave = () => {
+      document.body.style.cursor = 'default';
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseleave', handleMouseLeave);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseleave', handleMouseLeave);
+    };
+  }, []);
 
   // 磁吸到边缘
   const snapToEdge = async () => {
@@ -411,49 +431,40 @@ export function FloatWindow() {
 
               {/* Items list */}
               <div className="space-y-2 max-h-56 overflow-y-auto">
-                {items.map((item, index) => {
-                  const isHovered = hoveredId === item.id;
-                  return (
-                    <motion.div
-                      key={item.id}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: index * 0.05 }}
-                      onClick={() => handleItemClick(item)}
-                      onMouseEnter={() => setHoveredId(item.id)}
-                      onMouseLeave={() => setHoveredId(null)}
-                      className={`flex items-center gap-2 p-2 rounded-lg transition-colors cursor-pointer ${
-                        isHovered ? "bg-white/20" : "bg-white/10"
-                      }`}
+                {items.map((item, index) => (
+                  <motion.div
+                    key={item.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                    onClick={() => handleItemClick(item)}
+                    className="group flex items-center gap-2 p-2 rounded-lg transition-colors cursor-pointer bg-white/10 hover:bg-white/20"
+                  >
+                    {/* tmux indicator */}
+                    {item.tmux_session && (
+                      <Terminal className="w-4 h-4 shrink-0 opacity-70" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{item.title}</p>
+                      <p className="text-xs opacity-70 truncate">
+                        {item.tmux_session && (
+                          <span>{item.tmux_session}:{item.tmux_window}.{item.tmux_pane} · </span>
+                        )}
+                        {formatTime(item.timestamp)}
+                      </p>
+                    </div>
+                    <motion.button
+                      whileTap={{ scale: 0.9 }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDismiss(item.id);
+                      }}
+                      className="p-1 rounded transition-opacity opacity-0 group-hover:opacity-100 group-hover:bg-white/10"
                     >
-                      {/* tmux indicator */}
-                      {item.tmux_session && (
-                        <Terminal className="w-4 h-4 shrink-0 opacity-70" />
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{item.title}</p>
-                        <p className="text-xs opacity-70 truncate">
-                          {item.tmux_session && (
-                            <span>{item.tmux_session}:{item.tmux_window}.{item.tmux_pane} · </span>
-                          )}
-                          {formatTime(item.timestamp)}
-                        </p>
-                      </div>
-                      <motion.button
-                        whileTap={{ scale: 0.9 }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDismiss(item.id);
-                        }}
-                        className={`p-1 rounded transition-opacity ${
-                          isHovered ? "opacity-100 bg-white/10" : "opacity-0"
-                        }`}
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </motion.button>
-                    </motion.div>
-                  );
-                })}
+                      <X className="w-3.5 h-3.5" />
+                    </motion.button>
+                  </motion.div>
+                ))}
               </div>
 
               {items.length === 0 && (

@@ -2798,6 +2798,7 @@ async fn test_zenmux_connection(base_url: String, auth_token: String, model: Str
 #[cfg(target_os = "macos")]
 fn setup_float_window_macos(app: &tauri::App) {
     use tauri::Manager;
+    use objc::*;
 
     if let Some(window) = app.get_webview_window("float") {
         // 获取原生 NSWindow 句柄
@@ -2817,10 +2818,18 @@ fn setup_float_window_macos(app: &tauri::App) {
                 // 设置窗口级别为悬浮面板 (NSFloatingWindowLevel = 3)
                 ns_win.setLevel_(3);
 
+                // 关键：添加 NSWindowStyleMaskNonactivatingPanel 样式
+                // 这让窗口可以成为 key window 但不成为 main window
+                // 从而让 WebKit 正常更新光标
+                // NSWindowStyleMaskNonactivatingPanel = 1 << 7 = 128
+                let current_style: u64 = msg_send![ns_win, styleMask];
+                let new_style = current_style | (1 << 7); // NSWindowStyleMaskNonactivatingPanel
+                let _: () = msg_send![ns_win, setStyleMask: new_style];
+
                 // 关键：忽略鼠标事件不会让窗口获得焦点
                 ns_win.setIgnoresMouseEvents_(cocoa::base::NO);
 
-                println!("[DEBUG] Float window macOS properties configured");
+                println!("[DEBUG] Float window macOS properties configured with NonactivatingPanel style");
             }
         }
     }
@@ -3116,12 +3125,17 @@ pub fn run() {
                         let _ = window.set_focus();
                     } else {
                         // Recreate main window
-                        let _ = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
+                        #[cfg(target_os = "macos")]
+                        let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
                             .title("Lovcode")
                             .inner_size(800.0, 600.0)
                             .title_bar_style(tauri::TitleBarStyle::Overlay)
-                            .hidden_title(true)
-                            .build();
+                            .hidden_title(true);
+                        #[cfg(not(target_os = "macos"))]
+                        let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
+                            .title("Lovcode")
+                            .inner_size(800.0, 600.0);
+                        let _ = builder.build();
                     }
                 }
                 "show_float" => {
@@ -3147,6 +3161,7 @@ pub fn run() {
                             // Apply macOS specific settings
                             #[cfg(target_os = "macos")]
                             {
+                                use objc::*;
                                 if let Ok(ns_window) = window.ns_window() {
                                     unsafe {
                                         let ns_win: id = ns_window as id;
@@ -3156,6 +3171,10 @@ pub fn run() {
                                             | NSWindowCollectionBehavior::NSWindowCollectionBehaviorIgnoresCycle;
                                         ns_win.setCollectionBehavior_(behavior);
                                         ns_win.setLevel_(3);
+                                        // 添加 NonactivatingPanel 样式让光标正常更新
+                                        let current_style: u64 = msg_send![ns_win, styleMask];
+                                        let new_style = current_style | (1 << 7);
+                                        let _: () = msg_send![ns_win, setStyleMask: new_style];
                                         ns_win.setIgnoresMouseEvents_(cocoa::base::NO);
                                     }
                                 }
