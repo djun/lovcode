@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.4
+
+### Patch Changes
+
+- 移除悬浮窗功能
+
 ## 0.11.3
 
 ### Patch Changes
