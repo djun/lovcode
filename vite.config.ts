@@ -15,21 +15,12 @@ export default defineConfig(async () => ({
       bundler: "vite",
       injectTo: [
         path.resolve(__dirname, "src/main.tsx"),
-        path.resolve(__dirname, "src/float-main.tsx"),
       ],
     }),
     react(), tailwindcss()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
-    },
-  },
-  build: {
-    rollupOptions: {
-      input: {
-        main: path.resolve(__dirname, "index.html"),
-        float: path.resolve(__dirname, "float.html"),
-      },
     },
   },
 

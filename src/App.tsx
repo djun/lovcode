@@ -51,8 +51,6 @@ import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "./comp
 import { ContextFileItem, ConfigFileItem } from "./components/ContextFileItem";
 import { DocumentReader } from "./components/DocumentReader";
 import { invoke } from "@tauri-apps/api/core";
-import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { LogicalPosition } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
 import {
@@ -447,54 +445,10 @@ function App() {
   const [profile, setProfile] = usePersistedState<UserProfile>("lovcode:profile", { nickname: "", avatarUrl: "" });
   const [showProfileDialog, setShowProfileDialog] = useState(false);
   const [distillWatchEnabled, setDistillWatchEnabled] = useState(true);
-  const [floatWindowVisible, setFloatWindowVisible] = usePersistedState("lovcode:floatWindowVisible", false);
-
   // Load home directory and distill watch status
   useEffect(() => {
     invoke<string>("get_home_dir").then(setHomeDir).catch(() => {});
     invoke<boolean>("get_distill_watch_enabled").then(setDistillWatchEnabled).catch(() => {});
-  }, []);
-
-  // Toggle float window visibility
-  const toggleFloatWindow = useCallback(async () => {
-    const floatWin = await WebviewWindow.getByLabel("float");
-    if (floatWin) {
-      const visible = await floatWin.isVisible();
-      if (visible) {
-        await floatWin.hide();
-        setFloatWindowVisible(false);
-      } else {
-        // 重置到屏幕右下角
-        const screenWidth = window.screen.availWidth;
-        const screenHeight = window.screen.availHeight;
-        const screenLeft = (window.screen as { availLeft?: number }).availLeft ?? 0;
-        const screenTop = (window.screen as { availTop?: number }).availTop ?? 0;
-        const size = await floatWin.outerSize();
-        const scale = window.devicePixelRatio;
-        const winWidth = size.width / scale;
-        const winHeight = size.height / scale;
-        await floatWin.setPosition(new LogicalPosition(
-          screenLeft + screenWidth - winWidth - 20,
-          screenTop + screenHeight - winHeight - 20
-        ));
-        await floatWin.show();
-        setFloatWindowVisible(true);
-      }
-    }
-  }, [setFloatWindowVisible]);
-
-  // Restore float window visibility on mount
-  useEffect(() => {
-    if (floatWindowVisible) {
-      WebviewWindow.getByLabel("float").then(async (win) => {
-        if (win) {
-          await win.show();
-          // Refocus main window after showing float window
-          const mainWin = await WebviewWindow.getByLabel("main");
-          if (mainWin) await mainWin.setFocus();
-        }
-      });
-    }
   }, []);
 
   // Persist view to localStorage
@@ -844,13 +798,6 @@ function App() {
                     className="w-full text-left px-2 py-1.5 text-sm text-muted-foreground hover:text-ink hover:bg-card-alt rounded-md transition-colors"
                   >
                     Settings
-                  </button>
-                  <button
-                    onClick={toggleFloatWindow}
-                    className="w-full flex items-center justify-between gap-3 px-2.5 py-1.5 text-sm text-muted-foreground hover:text-ink hover:bg-card-alt rounded-md transition-colors"
-                  >
-                    <span className="whitespace-nowrap">Lovnotifier Messages</span>
-                    <span className={`w-2 h-2 shrink-0 rounded-full ${floatWindowVisible ? "bg-green-500" : "bg-muted-foreground/30"}`} />
                   </button>
                 </div>
               </PopoverContent>

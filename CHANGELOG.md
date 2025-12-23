@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.5
+
+### Patch Changes
+
+- 修复构建错误：清理悬浮窗功能遗留代码
+
 ## 0.11.4
 
 ### Patch Changes
