@@ -727,8 +727,16 @@ function App() {
           </div>
         </div>
 
-        <div className="p-3 border-t border-border min-w-52">
-          <p className="text-xs text-muted-foreground text-center">Lovcode v{version}</p>
+        <div className="px-3 py-2.5 border-t border-border/50 min-w-52">
+          <div className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors cursor-default">
+            <img src="/logo.png" alt="Lovcode" className="w-3.5 h-3.5" />
+            <span className="text-[11px] font-medium text-muted-foreground tracking-wide">
+              Lovcode
+            </span>
+            <span className="text-[10px] text-muted-foreground/60">
+              v{version}
+            </span>
+          </div>
         </div>
       </aside>
 
@@ -1229,7 +1237,10 @@ function Home({ onFeatureClick }: { onFeatureClick: (feature: FeatureType) => vo
 
   return (
     <div className="flex flex-col items-center justify-center min-h-full px-6 py-16">
-      <h1 className="font-serif text-5xl font-bold text-primary mb-3 tracking-tight">Lovcode</h1>
+      <h1 className="font-serif text-5xl font-bold text-primary mb-3 tracking-tight flex items-center gap-3">
+        <img src="/logo.png" alt="Lovcode" className="w-12 h-12" />
+        Lovcode
+      </h1>
       <p className="text-muted-foreground text-lg mb-12">Your Vibe Coding Hub</p>
 
       {stats && (
