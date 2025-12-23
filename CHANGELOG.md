@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.3
+
+### Patch Changes
+
+- 升级所有 icon 为 Radix Icons，统一设计系统
+
 ## 0.11.2
 
 ### Patch Changes
