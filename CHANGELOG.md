@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.12.0
+
+### Minor Changes
+
+- feat: add vibe coding logo branding
+
+  - New logo design combining code brackets with wave curves
+  - Add logo to sidebar footer and welcome page
+  - Update all Tauri app icons
+
 ## 0.11.5
 
 ### Patch Changes
