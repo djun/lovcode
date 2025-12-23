@@ -16,7 +16,7 @@
   <img src="https://img.shields.io/badge/Tauri-2.0-blue" alt="Tauri">
   <img src="https://img.shields.io/badge/React-19-blue" alt="React">
   <img src="https://img.shields.io/badge/TypeScript-5.8-blue" alt="TypeScript">
-  <img src="https://img.shields.io/badge/License-MIT-green" alt="License">
+  <img src="https://img.shields.io/badge/License-Apache_2.0-green" alt="License">
 </p>
 
 ---
@@ -86,4 +86,4 @@ pnpm tauri build
 
 ## License
 
-MIT
+Apache-2.0
