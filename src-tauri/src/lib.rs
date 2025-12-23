@@ -1,26 +1,21 @@
+use jieba_rs::Jieba;
+use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::channel;
+use std::sync::Arc;
+use std::sync::LazyLock;
 use std::sync::Mutex;
-use tauri::{
-    Emitter, Manager,
-    menu::{Menu, MenuItem},
-    tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState},
-    image::Image,
-};
+use std::time::Duration;
 use tantivy::collector::TopDocs;
 use tantivy::query::QueryParser;
 use tantivy::schema::{self, Value as TantivyValue, *};
 use tantivy::tokenizer::{LowerCaser, TextAnalyzer, Token, TokenStream, Tokenizer};
 use tantivy::{doc, Index, IndexWriter, ReloadPolicy};
-use jieba_rs::Jieba;
-use std::sync::LazyLock;
-use notify::{RecommendedWatcher, RecursiveMode, Watcher, Event};
-use std::sync::mpsc::channel;
-use std::time::Duration;
-use std::sync::Arc;
+use tauri::{menu::Menu, tray::TrayIconBuilder, Emitter, Manager};
 use warp::Filter;
 
 #[cfg(target_os = "macos")]
@@ -61,7 +56,10 @@ impl Tokenizer for JiebaTokenizer {
         for word in words {
             let word_str = word.trim();
             if !word_str.is_empty() {
-                let start = text[offset..].find(word).map(|i| offset + i).unwrap_or(offset);
+                let start = text[offset..]
+                    .find(word)
+                    .map(|i| offset + i)
+                    .unwrap_or(offset);
                 let end = start + word.len();
                 tokens.push(Token {
                     offset_from: start,
@@ -110,6 +108,39 @@ static REVIEW_QUEUE: LazyLock<Mutex<Vec<ReviewItem>>> = LazyLock::new(|| Mutex::
 
 // Global completed queue for dismissed items
 static COMPLETED_QUEUE: LazyLock<Mutex<Vec<ReviewItem>>> = LazyLock::new(|| Mutex::new(Vec::new()));
+
+// Review queue persistence path
+fn get_review_queue_path() -> PathBuf {
+    dirs::data_local_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("lovcode")
+        .join("review_queue.json")
+}
+
+// Load review queue from disk
+fn load_review_queue() {
+    let path = get_review_queue_path();
+    if path.exists() {
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            if let Ok(items) = serde_json::from_str::<Vec<ReviewItem>>(&content) {
+                let mut queue = REVIEW_QUEUE.lock().unwrap();
+                *queue = items;
+            }
+        }
+    }
+}
+
+// Save review queue to disk
+fn save_review_queue() {
+    let path = get_review_queue_path();
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let queue = REVIEW_QUEUE.lock().unwrap();
+    if let Ok(json) = serde_json::to_string_pretty(&*queue) {
+        let _ = std::fs::write(&path, json);
+    }
+}
 
 // Completed queue persistence path
 fn get_completed_queue_path() -> PathBuf {
@@ -185,7 +216,8 @@ fn next_review_seq() -> u64 {
 const NOTIFY_SERVER_PORT: u16 = 23567;
 
 // Distill watch state
-static DISTILL_WATCH_ENABLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+static DISTILL_WATCH_ENABLED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(true);
 
 struct SearchIndex {
     index: Index,
@@ -209,7 +241,7 @@ fn create_schema() -> Schema {
         .set_indexing_options(
             TextFieldIndexing::default()
                 .set_tokenizer(JIEBA_TOKENIZER_NAME)
-                .set_index_option(schema::IndexRecordOption::WithFreqsAndPositions)
+                .set_index_option(schema::IndexRecordOption::WithFreqsAndPositions),
         )
         .set_stored();
 
@@ -255,8 +287,8 @@ pub struct Message {
     pub role: String,
     pub content: String,
     pub timestamp: String,
-    pub is_meta: bool,      // slash command 展开的内容
-    pub is_tool: bool,      // tool_use 或 tool_result
+    pub is_meta: bool, // slash command 展开的内容
+    pub is_tool: bool, // tool_use 或 tool_result
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -308,11 +340,11 @@ pub struct LocalCommand {
     pub argument_hint: Option<String>,
     pub content: String,
     pub version: Option<String>,
-    pub status: String,                    // "active" | "deprecated" | "archived"
-    pub deprecated_by: Option<String>,     // replacement command name
-    pub changelog: Option<String>,         // changelog content if .changelog file exists
-    pub aliases: Vec<String>,              // previous names for stats aggregation
-    pub frontmatter: Option<String>,       // raw frontmatter text (if any)
+    pub status: String,                // "active" | "deprecated" | "archived"
+    pub deprecated_by: Option<String>, // replacement command name
+    pub changelog: Option<String>,     // changelog content if .changelog file exists
+    pub aliases: Vec<String>,          // previous names for stats aggregation
+    pub frontmatter: Option<String>,   // raw frontmatter text (if any)
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -331,7 +363,7 @@ pub struct McpServer {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ReviewItem {
     pub id: String,
-    pub seq: u64,  // Global auto-increment sequence number
+    pub seq: u64, // Global auto-increment sequence number
     pub title: String,
     pub project: Option<String>,
     pub timestamp: u64,
@@ -367,7 +399,10 @@ fn get_claude_json_path() -> PathBuf {
 fn decode_project_path(id: &str) -> String {
     // First, handle `--` which means `/.` (hidden directories like .claude)
     // Replace `--` with a placeholder, then `-` with `/`, then restore `/.`
-    let base = id.replace("--", "\x00").replace("-", "/").replace("\x00", "/.");
+    let base = id
+        .replace("--", "\x00")
+        .replace("-", "/")
+        .replace("\x00", "/.");
 
     // If the base path exists, we're done
     if PathBuf::from(&base).exists() {
@@ -452,7 +487,9 @@ async fn list_projects() -> Result<Vec<Project>, String> {
                             session_count += 1;
                             if let Ok(meta) = entry.metadata() {
                                 if let Ok(modified) = meta.modified() {
-                                    if let Ok(duration) = modified.duration_since(std::time::UNIX_EPOCH) {
+                                    if let Ok(duration) =
+                                        modified.duration_since(std::time::UNIX_EPOCH)
+                                    {
                                         last_active = last_active.max(duration.as_secs());
                                     }
                                 }
@@ -505,8 +542,9 @@ async fn list_sessions(project_id: String) -> Result<Vec<Session>, String> {
                         if parsed.line_type.as_deref() == Some("summary") {
                             summary = parsed.summary;
                         }
-                        if parsed.line_type.as_deref() == Some("user") ||
-                           parsed.line_type.as_deref() == Some("assistant") {
+                        if parsed.line_type.as_deref() == Some("user")
+                            || parsed.line_type.as_deref() == Some("assistant")
+                        {
                             message_count += 1;
                         }
                     }
@@ -556,7 +594,11 @@ async fn list_all_sessions() -> Result<Vec<Session>, String> {
                 continue;
             }
 
-            let project_id = project_path.file_name().unwrap().to_string_lossy().to_string();
+            let project_id = project_path
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .to_string();
             let display_path = decode_project_path(&project_id);
 
             for entry in fs::read_dir(&project_path).map_err(|e| e.to_string())? {
@@ -576,8 +618,9 @@ async fn list_all_sessions() -> Result<Vec<Session>, String> {
                             if parsed.line_type.as_deref() == Some("summary") {
                                 summary = parsed.summary;
                             }
-                            if parsed.line_type.as_deref() == Some("user") ||
-                               parsed.line_type.as_deref() == Some("assistant") {
+                            if parsed.line_type.as_deref() == Some("user")
+                                || parsed.line_type.as_deref() == Some("assistant")
+                            {
                                 message_count += 1;
                             }
                         }
@@ -610,14 +653,20 @@ async fn list_all_sessions() -> Result<Vec<Session>, String> {
 }
 
 #[tauri::command]
-async fn list_all_chats(limit: Option<usize>, offset: Option<usize>) -> Result<ChatsResponse, String> {
+async fn list_all_chats(
+    limit: Option<usize>,
+    offset: Option<usize>,
+) -> Result<ChatsResponse, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let projects_dir = get_claude_dir().join("projects");
         let max_messages = limit.unwrap_or(50);
         let skip = offset.unwrap_or(0);
 
         if !projects_dir.exists() {
-            return Ok(ChatsResponse { items: vec![], total: 0 });
+            return Ok(ChatsResponse {
+                items: vec![],
+                total: 0,
+            });
         }
 
         // Collect all session files with metadata
@@ -631,7 +680,11 @@ async fn list_all_chats(limit: Option<usize>, offset: Option<usize>) -> Result<C
                 continue;
             }
 
-            let project_id = project_path.file_name().unwrap().to_string_lossy().to_string();
+            let project_id = project_path
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .to_string();
             let display_path = decode_project_path(&project_id);
 
             for entry in fs::read_dir(&project_path).map_err(|e| e.to_string())? {
@@ -640,14 +693,20 @@ async fn list_all_chats(limit: Option<usize>, offset: Option<usize>) -> Result<C
                 let name = path.file_name().unwrap().to_string_lossy().to_string();
 
                 if name.ends_with(".jsonl") && !name.starts_with("agent-") {
-                    let last_modified = entry.metadata()
+                    let last_modified = entry
+                        .metadata()
                         .ok()
                         .and_then(|m| m.modified().ok())
                         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                         .map(|d| d.as_secs())
                         .unwrap_or(0);
 
-                    session_files.push((path, project_id.clone(), display_path.clone(), last_modified));
+                    session_files.push((
+                        path,
+                        project_id.clone(),
+                        display_path.clone(),
+                        last_modified,
+                    ));
                 }
             }
         }
@@ -709,7 +768,11 @@ async fn list_all_chats(limit: Option<usize>, offset: Option<usize>) -> Result<C
         all_chats.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
 
         let total = all_chats.len();
-        let items: Vec<ChatMessage> = all_chats.into_iter().skip(skip).take(max_messages).collect();
+        let items: Vec<ChatMessage> = all_chats
+            .into_iter()
+            .skip(skip)
+            .take(max_messages)
+            .collect();
 
         Ok(ChatsResponse { items, total })
     })
@@ -718,7 +781,10 @@ async fn list_all_chats(limit: Option<usize>, offset: Option<usize>) -> Result<C
 }
 
 #[tauri::command]
-async fn get_session_messages(project_id: String, session_id: String) -> Result<Vec<Message>, String> {
+async fn get_session_messages(
+    project_id: String,
+    session_id: String,
+) -> Result<Vec<Message>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let session_path = get_claude_dir()
             .join("projects")
@@ -894,7 +960,11 @@ async fn build_search_index() -> Result<usize, String> {
 }
 
 #[tauri::command]
-fn search_chats(query: String, limit: Option<usize>, project_id: Option<String>) -> Result<Vec<SearchResult>, String> {
+fn search_chats(
+    query: String,
+    limit: Option<usize>,
+    project_id: Option<String>,
+) -> Result<Vec<SearchResult>, String> {
     let max_results = limit.unwrap_or(50);
 
     // Try to get index from global state or load from disk
@@ -914,7 +984,8 @@ fn search_chats(query: String, limit: Option<usize>, project_id: Option<String>)
     }
 
     let search_index = guard.as_ref().unwrap();
-    let reader = search_index.index
+    let reader = search_index
+        .index
         .reader_builder()
         .reload_policy(ReloadPolicy::OnCommitWithDelay)
         .try_into()
@@ -925,8 +996,13 @@ fn search_chats(query: String, limit: Option<usize>, project_id: Option<String>)
     let content_field = search_index.schema.get_field("content").unwrap();
     let session_summary_field = search_index.schema.get_field("session_summary").unwrap();
 
-    let query_parser = QueryParser::for_index(&search_index.index, vec![content_field, session_summary_field]);
-    let parsed_query = query_parser.parse_query(&query).map_err(|e| e.to_string())?;
+    let query_parser = QueryParser::for_index(
+        &search_index.index,
+        vec![content_field, session_summary_field],
+    );
+    let parsed_query = query_parser
+        .parse_query(&query)
+        .map_err(|e| e.to_string())?;
 
     let top_docs = searcher
         .search(&parsed_query, &TopDocs::with_limit(max_results))
@@ -935,7 +1011,8 @@ fn search_chats(query: String, limit: Option<usize>, project_id: Option<String>)
     let mut results = Vec::new();
 
     for (score, doc_address) in top_docs {
-        let retrieved_doc: tantivy::TantivyDocument = searcher.doc(doc_address).map_err(|e| e.to_string())?;
+        let retrieved_doc: tantivy::TantivyDocument =
+            searcher.doc(doc_address).map_err(|e| e.to_string())?;
 
         let get_text = |field_name: &str| -> String {
             let field = search_index.schema.get_field(field_name).unwrap();
@@ -964,7 +1041,11 @@ fn search_chats(query: String, limit: Option<usize>, project_id: Option<String>)
             project_id: doc_project_id,
             project_path: get_text("project_path"),
             session_id: get_text("session_id"),
-            session_summary: if summary.is_empty() { None } else { Some(summary) },
+            session_summary: if summary.is_empty() {
+                None
+            } else {
+                Some(summary)
+            },
             timestamp: get_text("timestamp"),
             score,
         });
@@ -986,7 +1067,8 @@ fn extract_content_with_meta(value: &Option<serde_json::Value>) -> (String, bool
                 false
             });
 
-            let text = arr.iter()
+            let text = arr
+                .iter()
                 .filter_map(|item| {
                     if let Some(obj) = item.as_object() {
                         if obj.get("type").and_then(|v| v.as_str()) == Some("text") {
@@ -1079,16 +1161,27 @@ fn migrate_old_archived_commands(old_dir: &PathBuf, new_dir: &PathBuf) {
 }
 
 /// Recursively migrate .md.deprecated files to archived directory
-fn migrate_deprecated_files_recursive(base_dir: &PathBuf, current_dir: &PathBuf, archived_dir: &PathBuf) {
+fn migrate_deprecated_files_recursive(
+    base_dir: &PathBuf,
+    current_dir: &PathBuf,
+    archived_dir: &PathBuf,
+) {
     if let Ok(entries) = fs::read_dir(current_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.is_dir() && !path.file_name().map_or(false, |n| n.to_string_lossy().starts_with('.')) {
+            if path.is_dir()
+                && !path
+                    .file_name()
+                    .map_or(false, |n| n.to_string_lossy().starts_with('.'))
+            {
                 migrate_deprecated_files_recursive(base_dir, &path, archived_dir);
             } else if path.extension().map_or(false, |e| e == "deprecated") {
                 // Migrate .md.deprecated file
                 if let Ok(relative) = path.strip_prefix(base_dir) {
-                    let new_name = relative.to_string_lossy().trim_end_matches(".deprecated").to_string();
+                    let new_name = relative
+                        .to_string_lossy()
+                        .trim_end_matches(".deprecated")
+                        .to_string();
                     let dest = archived_dir.join(&new_name);
                     if let Some(parent) = dest.parent() {
                         let _ = fs::create_dir_all(parent);
@@ -1096,9 +1189,13 @@ fn migrate_deprecated_files_recursive(base_dir: &PathBuf, current_dir: &PathBuf,
                     let _ = fs::rename(&path, &dest);
 
                     // Also migrate changelog if exists
-                    let changelog_src = PathBuf::from(path.to_string_lossy().replace(".md.deprecated", ".changelog"));
+                    let changelog_src = PathBuf::from(
+                        path.to_string_lossy()
+                            .replace(".md.deprecated", ".changelog"),
+                    );
                     if changelog_src.exists() {
-                        let changelog_dest = archived_dir.join(new_name.replace(".md", ".changelog"));
+                        let changelog_dest =
+                            archived_dir.join(new_name.replace(".md", ".changelog"));
                         let _ = fs::rename(&changelog_src, &changelog_dest);
                     }
                 }
@@ -1108,7 +1205,11 @@ fn migrate_deprecated_files_recursive(base_dir: &PathBuf, current_dir: &PathBuf,
 }
 
 /// Recursively migrate files from .archive/ subdirectories
-fn migrate_archive_subdirs_recursive(base_dir: &PathBuf, current_dir: &PathBuf, archived_dir: &PathBuf) {
+fn migrate_archive_subdirs_recursive(
+    base_dir: &PathBuf,
+    current_dir: &PathBuf,
+    archived_dir: &PathBuf,
+) {
     if let Ok(entries) = fs::read_dir(current_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
@@ -1121,7 +1222,8 @@ fn migrate_archive_subdirs_recursive(base_dir: &PathBuf, current_dir: &PathBuf, 
                             let file_path = archive_entry.path();
                             if file_path.is_file() {
                                 // Calculate relative path from base commands dir
-                                let parent_relative = current_dir.strip_prefix(base_dir).unwrap_or(Path::new(""));
+                                let parent_relative =
+                                    current_dir.strip_prefix(base_dir).unwrap_or(Path::new(""));
                                 let filename = file_path.file_name().unwrap_or_default();
                                 let dest = archived_dir.join(parent_relative).join(filename);
                                 if let Some(parent) = dest.parent() {
@@ -1149,11 +1251,19 @@ fn migrate_orphan_changelogs(commands_dir: &PathBuf, archived_dir: &PathBuf) {
     migrate_orphan_changelogs_recursive(commands_dir, commands_dir, archived_dir);
 }
 
-fn migrate_orphan_changelogs_recursive(base_dir: &PathBuf, current_dir: &PathBuf, archived_dir: &PathBuf) {
+fn migrate_orphan_changelogs_recursive(
+    base_dir: &PathBuf,
+    current_dir: &PathBuf,
+    archived_dir: &PathBuf,
+) {
     if let Ok(entries) = fs::read_dir(current_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.is_dir() && !path.file_name().map_or(false, |n| n.to_string_lossy().starts_with('.')) {
+            if path.is_dir()
+                && !path
+                    .file_name()
+                    .map_or(false, |n| n.to_string_lossy().starts_with('.'))
+            {
                 migrate_orphan_changelogs_recursive(base_dir, &path, archived_dir);
             } else if path.extension().map_or(false, |e| e == "changelog") {
                 // Check if corresponding .md exists in archived_dir
@@ -1174,7 +1284,12 @@ fn migrate_orphan_changelogs_recursive(base_dir: &PathBuf, current_dir: &PathBuf
 }
 
 /// Collect commands from a directory with a given status
-fn collect_commands_from_dir(base_dir: &PathBuf, current_dir: &PathBuf, commands: &mut Vec<LocalCommand>, status: &str) -> Result<(), String> {
+fn collect_commands_from_dir(
+    base_dir: &PathBuf,
+    current_dir: &PathBuf,
+    commands: &mut Vec<LocalCommand>,
+    status: &str,
+) -> Result<(), String> {
     for entry in fs::read_dir(current_dir).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path();
@@ -1199,7 +1314,8 @@ fn collect_commands_from_dir(base_dir: &PathBuf, current_dir: &PathBuf, commands
 
             if is_command {
                 let relative = path.strip_prefix(base_dir).unwrap_or(&path);
-                let name = relative.to_string_lossy()
+                let name = relative
+                    .to_string_lossy()
                     .trim_end_matches(name_suffix)
                     .replace("\\", "/")
                     .to_string();
@@ -1215,7 +1331,8 @@ fn collect_commands_from_dir(base_dir: &PathBuf, current_dir: &PathBuf, commands
                 };
 
                 // Read changelog if exists (same directory, .changelog extension)
-                let changelog = path.parent()
+                let changelog = path
+                    .parent()
                     .map(|dir| {
                         let base = path.file_stem().unwrap_or_default().to_string_lossy();
                         dir.join(format!("{}.changelog", base))
@@ -1224,11 +1341,18 @@ fn collect_commands_from_dir(base_dir: &PathBuf, current_dir: &PathBuf, commands
                     .and_then(|p| fs::read_to_string(p).ok());
 
                 // Parse aliases: comma-separated list of previous command names
-                let aliases = frontmatter.get("aliases")
-                    .map(|s| s.split(',')
-                        .map(|a| a.trim().trim_matches(|c| c == '[' || c == ']' || c == '"' || c == '\'').to_string())
-                        .filter(|a| !a.is_empty())
-                        .collect::<Vec<_>>())
+                let aliases = frontmatter
+                    .get("aliases")
+                    .map(|s| {
+                        s.split(',')
+                            .map(|a| {
+                                a.trim()
+                                    .trim_matches(|c| c == '[' || c == ']' || c == '"' || c == '\'')
+                                    .to_string()
+                            })
+                            .filter(|a| !a.is_empty())
+                            .collect::<Vec<_>>()
+                    })
                     .unwrap_or_default();
 
                 commands.push(LocalCommand {
@@ -1279,7 +1403,11 @@ fn parse_frontmatter(content: &str) -> (HashMap<String, String>, Option<String>,
 
 /// Rename a command file (supports path changes like /foo/bar -> /foo/baz/bar)
 #[tauri::command]
-fn rename_command(path: String, new_name: String, create_dir: Option<bool>) -> Result<String, String> {
+fn rename_command(
+    path: String,
+    new_name: String,
+    create_dir: Option<bool>,
+) -> Result<String, String> {
     let src = PathBuf::from(&path);
     if !src.exists() {
         return Err(format!("Command file not found: {}", path));
@@ -1308,7 +1436,8 @@ fn rename_command(path: String, new_name: String, create_dir: Option<bool>) -> R
     if let Some(dest_parent) = dest.parent() {
         if !dest_parent.exists() {
             if create_dir.unwrap_or(false) {
-                fs::create_dir_all(dest_parent).map_err(|e| format!("Failed to create directory: {}", e))?;
+                fs::create_dir_all(dest_parent)
+                    .map_err(|e| format!("Failed to create directory: {}", e))?;
             } else {
                 // Return special error for frontend to show confirmation
                 return Err(format!("DIR_NOT_EXIST:{}", dest_parent.to_string_lossy()));
@@ -1317,37 +1446,44 @@ fn rename_command(path: String, new_name: String, create_dir: Option<bool>) -> R
     }
 
     if dest.exists() && dest != src {
-        return Err(format!("A command with name '{}' already exists", new_filename));
+        return Err(format!(
+            "A command with name '{}' already exists",
+            new_filename
+        ));
     }
 
     if dest != src {
         // Calculate old command name (derive from filename without .md)
-        let old_basename = src.file_stem()
+        let old_basename = src
+            .file_stem()
             .and_then(|s| s.to_str())
             .ok_or("Cannot get old filename")?;
-        let old_name = if let Ok(relative) = src.parent().unwrap_or(&src).strip_prefix(&commands_dir) {
-            if relative.as_os_str().is_empty() {
-                format!("/{}", old_basename)
+        let old_name =
+            if let Ok(relative) = src.parent().unwrap_or(&src).strip_prefix(&commands_dir) {
+                if relative.as_os_str().is_empty() {
+                    format!("/{}", old_basename)
+                } else {
+                    format!("/{}/{}", relative.to_string_lossy(), old_basename)
+                }
             } else {
-                format!("/{}/{}", relative.to_string_lossy(), old_basename)
-            }
-        } else {
-            format!("/{}", old_basename)
-        };
+                format!("/{}", old_basename)
+            };
 
         // Calculate new command name
-        let new_basename = dest.file_stem()
+        let new_basename = dest
+            .file_stem()
             .and_then(|s| s.to_str())
             .ok_or("Cannot get new filename")?;
-        let new_name = if let Ok(relative) = dest.parent().unwrap_or(&dest).strip_prefix(&commands_dir) {
-            if relative.as_os_str().is_empty() {
-                format!("/{}", new_basename)
+        let new_name =
+            if let Ok(relative) = dest.parent().unwrap_or(&dest).strip_prefix(&commands_dir) {
+                if relative.as_os_str().is_empty() {
+                    format!("/{}", new_basename)
+                } else {
+                    format!("/{}/{}", relative.to_string_lossy(), new_basename)
+                }
             } else {
-                format!("/{}/{}", relative.to_string_lossy(), new_basename)
-            }
-        } else {
-            format!("/{}", new_basename)
-        };
+                format!("/{}", new_basename)
+            };
 
         // Update aliases: add old name, remove new name if it was an alias
         let content = fs::read_to_string(&src).map_err(|e| e.to_string())?;
@@ -1375,7 +1511,10 @@ fn update_aliases_on_rename(content: &str, old_name: &str, new_name: &str) -> St
         let parts: Vec<&str> = content.splitn(3, "---").collect();
         if parts.len() >= 3 {
             let frontmatter = parts[1];
-            if let Some(line) = frontmatter.lines().find(|l| l.trim_start().starts_with("aliases:")) {
+            if let Some(line) = frontmatter
+                .lines()
+                .find(|l| l.trim_start().starts_with("aliases:"))
+            {
                 let value_part = line.split(':').nth(1).unwrap_or("").trim();
                 let aliases: Vec<String> = value_part
                     .trim_matches('"')
@@ -1409,17 +1548,26 @@ fn update_aliases_on_rename(content: &str, old_name: &str, new_name: &str) -> St
         if new_aliases.is_empty() {
             return content.to_string();
         }
-        return format!("---\naliases: \"{}\"\n---\n\n{}", new_aliases.join(", "), content);
+        return format!(
+            "---\naliases: \"{}\"\n---\n\n{}",
+            new_aliases.join(", "),
+            content
+        );
     }
 
     let parts: Vec<&str> = content.splitn(3, "---").collect();
     let frontmatter = parts[1];
     let body = parts[2];
 
-    if let Some(aliases_line_idx) = frontmatter.lines().position(|l| l.trim_start().starts_with("aliases:")) {
+    if let Some(aliases_line_idx) = frontmatter
+        .lines()
+        .position(|l| l.trim_start().starts_with("aliases:"))
+    {
         let lines: Vec<&str> = frontmatter.lines().collect();
 
-        let new_frontmatter: Vec<String> = lines.iter().enumerate()
+        let new_frontmatter: Vec<String> = lines
+            .iter()
+            .enumerate()
             .filter_map(|(i, &l)| {
                 if i == aliases_line_idx {
                     if new_aliases.is_empty() {
@@ -1436,7 +1584,11 @@ fn update_aliases_on_rename(content: &str, old_name: &str, new_name: &str) -> St
         format!("---{}---{}", new_frontmatter.join("\n"), body)
     } else if !new_aliases.is_empty() {
         // No aliases field, add it
-        let new_frontmatter = format!("{}\naliases: \"{}\"", frontmatter.trim_end(), new_aliases.join(", "));
+        let new_frontmatter = format!(
+            "{}\naliases: \"{}\"",
+            frontmatter.trim_end(),
+            new_aliases.join(", ")
+        );
         format!("---{}---{}", new_frontmatter, body)
     } else {
         content.to_string()
@@ -1446,7 +1598,11 @@ fn update_aliases_on_rename(content: &str, old_name: &str, new_name: &str) -> St
 /// Deprecate a command by moving it to ~/.claude/.commands/archived/
 /// This moves it outside the commands directory so Claude Code won't load it
 #[tauri::command]
-fn deprecate_command(path: String, replaced_by: Option<String>, note: Option<String>) -> Result<String, String> {
+fn deprecate_command(
+    path: String,
+    replaced_by: Option<String>,
+    note: Option<String>,
+) -> Result<String, String> {
     let src = PathBuf::from(&path);
     if !src.exists() {
         return Err(format!("Command file not found: {}", path));
@@ -1479,7 +1635,8 @@ fn deprecate_command(path: String, replaced_by: Option<String>, note: Option<Str
     }
 
     // Calculate relative path from commands directory
-    let relative = src.strip_prefix(&commands_dir)
+    let relative = src
+        .strip_prefix(&commands_dir)
         .map_err(|_| "Command is not in commands directory")?;
 
     // Create destination path in archived directory (preserving subdirectory structure)
@@ -1494,7 +1651,8 @@ fn deprecate_command(path: String, replaced_by: Option<String>, note: Option<Str
     let base_name = src.with_extension("");
     let changelog_src = base_name.with_extension("changelog");
     if changelog_src.exists() {
-        let changelog_relative = changelog_src.strip_prefix(&commands_dir)
+        let changelog_relative = changelog_src
+            .strip_prefix(&commands_dir)
             .map_err(|_| "Changelog is not in commands directory")?;
         let changelog_dest = archived_dir.join(changelog_relative);
         let _ = fs::rename(&changelog_src, &changelog_dest);
@@ -1542,13 +1700,16 @@ fn restore_command(path: String) -> Result<String, String> {
     // Determine source type and calculate destination
     let dest = if src.starts_with(&archived_dir) {
         // From .commands/archived/ - restore to commands/
-        let relative = src.strip_prefix(&archived_dir)
+        let relative = src
+            .strip_prefix(&archived_dir)
             .map_err(|_| "Cannot get relative path")?;
         commands_dir.join(relative)
     } else if path_str.contains("/.archive/") || path_str.contains("\\.archive\\") {
         // Legacy: from .archive/ subdirectory - move to parent
         let archive_dir = src.parent().ok_or("Cannot get parent directory")?;
-        let parent = archive_dir.parent().ok_or("Cannot get grandparent directory")?;
+        let parent = archive_dir
+            .parent()
+            .ok_or("Cannot get grandparent directory")?;
         let filename = src.file_name().ok_or("Cannot get filename")?;
         parent.join(filename)
     } else if path_str.ends_with(".md.deprecated") {
@@ -1581,7 +1742,8 @@ fn restore_command(path: String) -> Result<String, String> {
         let base_name = src.with_extension("");
         let changelog_src = base_name.with_extension("changelog");
         if changelog_src.exists() {
-            let changelog_relative = changelog_src.strip_prefix(&archived_dir)
+            let changelog_relative = changelog_src
+                .strip_prefix(&archived_dir)
                 .map_err(|_| "Cannot get changelog relative path")?;
             let changelog_dest = commands_dir.join(changelog_relative);
             let _ = fs::rename(&changelog_src, &changelog_dest);
@@ -1613,21 +1775,26 @@ fn update_frontmatter_field(content: &str, key: &str, value: &str) -> String {
 
             // Check if key exists and update it
             let mut found = false;
-            let mapped: Vec<String> = fm_content.lines().map(|line| {
-                if let Some(colon_idx) = line.find(':') {
-                    let k = line[..colon_idx].trim();
-                    if k == key {
-                        found = true;
-                        if value.is_empty() {
-                            return String::new(); // Remove the field
+            let mapped: Vec<String> = fm_content
+                .lines()
+                .map(|line| {
+                    if let Some(colon_idx) = line.find(':') {
+                        let k = line[..colon_idx].trim();
+                        if k == key {
+                            found = true;
+                            if value.is_empty() {
+                                return String::new(); // Remove the field
+                            }
+                            return format!("{}: {}", key, value);
                         }
-                        return format!("{}: {}", key, value);
                     }
-                }
-                line.to_string()
-            }).collect();
-            let updated_fm: Vec<String> = mapped.into_iter()
-                .filter(|l| !l.is_empty() || !found).collect();
+                    line.to_string()
+                })
+                .collect();
+            let updated_fm: Vec<String> = mapped
+                .into_iter()
+                .filter(|l| !l.is_empty() || !found)
+                .collect();
 
             let fm_str = updated_fm.join("\n");
             if found {
@@ -1694,7 +1861,11 @@ fn list_local_agents() -> Result<Vec<LocalAgent>, String> {
     Ok(agents)
 }
 
-fn collect_agents(base_dir: &PathBuf, current_dir: &PathBuf, agents: &mut Vec<LocalAgent>) -> Result<(), String> {
+fn collect_agents(
+    base_dir: &PathBuf,
+    current_dir: &PathBuf,
+    agents: &mut Vec<LocalAgent>,
+) -> Result<(), String> {
     for entry in fs::read_dir(current_dir).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path();
@@ -1708,7 +1879,8 @@ fn collect_agents(base_dir: &PathBuf, current_dir: &PathBuf, agents: &mut Vec<Lo
             // Only include if it has a 'model' field (agents have model, commands don't)
             if frontmatter.contains_key("model") {
                 let relative = path.strip_prefix(base_dir).unwrap_or(&path);
-                let name = relative.to_string_lossy()
+                let name = relative
+                    .to_string_lossy()
                     .trim_end_matches(".md")
                     .replace("\\", "/")
                     .to_string();
@@ -1833,11 +2005,18 @@ fn list_reference_sources() -> Result<Vec<ReferenceSource>, String> {
         if metadata.is_dir() {
             let name = entry.file_name().to_string_lossy().to_string();
             let doc_count = fs::read_dir(&path)
-                .map(|entries| entries.filter(|e| {
-                    e.as_ref().ok().map(|e| {
-                        e.path().extension().map(|ext| ext == "md").unwrap_or(false)
-                    }).unwrap_or(false)
-                }).count())
+                .map(|entries| {
+                    entries
+                        .filter(|e| {
+                            e.as_ref()
+                                .ok()
+                                .map(|e| {
+                                    e.path().extension().map(|ext| ext == "md").unwrap_or(false)
+                                })
+                                .unwrap_or(false)
+                        })
+                        .count()
+                })
                 .unwrap_or(0);
 
             sources.push(ReferenceSource {
@@ -1896,7 +2075,8 @@ fn list_reference_docs(source: String) -> Result<Vec<ReferenceDoc>, String> {
         let path = entry.path();
 
         if path.extension().map(|e| e == "md").unwrap_or(false) {
-            let name = path.file_stem()
+            let name = path
+                .file_stem()
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_default();
 
@@ -1913,8 +2093,14 @@ fn list_reference_docs(source: String) -> Result<Vec<ReferenceDoc>, String> {
     // Sort by _order.txt if available, otherwise alphabetically
     if !order_map.is_empty() {
         docs.sort_by(|a, b| {
-            let a_idx = order_map.get(&a.name).map(|(i, _)| *i).unwrap_or(usize::MAX);
-            let b_idx = order_map.get(&b.name).map(|(i, _)| *i).unwrap_or(usize::MAX);
+            let a_idx = order_map
+                .get(&a.name)
+                .map(|(i, _)| *i)
+                .unwrap_or(usize::MAX);
+            let b_idx = order_map
+                .get(&b.name)
+                .map(|(i, _)| *i)
+                .unwrap_or(usize::MAX);
             a_idx.cmp(&b_idx)
         });
     } else {
@@ -1939,7 +2125,9 @@ fn get_reference_doc(path: String) -> Result<String, String> {
 
 #[tauri::command]
 fn emit_review_queue(window: tauri::Window, items: Vec<ReviewItem>) -> Result<(), String> {
-    window.emit("review-queue-update", items).map_err(|e| e.to_string())
+    window
+        .emit("review-queue-update", items)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1986,6 +2174,9 @@ fn dismiss_review_item(app_handle: tauri::AppHandle, id: String) -> Result<(), S
 
         // Update tray menu
         update_tray_menu(&app_handle);
+
+        // Persist queue
+        save_review_queue();
     }
 
     Ok(())
@@ -2066,7 +2257,11 @@ fn find_session_project(session_id: String) -> Result<Option<Session>, String> {
 
         let session_file = project_path.join(format!("{}.jsonl", session_id));
         if session_file.exists() {
-            let project_id = project_path.file_name().unwrap().to_string_lossy().to_string();
+            let project_id = project_path
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .to_string();
             let display_path = decode_project_path(&project_id);
             let content = fs::read_to_string(&session_file).unwrap_or_default();
 
@@ -2145,7 +2340,8 @@ fn get_templates_path(app_handle: Option<&tauri::AppHandle>) -> PathBuf {
     // Tauri maps "../" to "_up_/" in the resource bundle
     if let Some(handle) = app_handle {
         if let Ok(resource_path) = handle.path().resource_dir() {
-            let bundled = resource_path.join("_up_/third-parties/claude-code-templates/docs/components.json");
+            let bundled =
+                resource_path.join("_up_/third-parties/claude-code-templates/docs/components.json");
             if bundled.exists() {
                 return bundled;
             }
@@ -2156,7 +2352,9 @@ fn get_templates_path(app_handle: Option<&tauri::AppHandle>) -> PathBuf {
     let relative_path = "third-parties/claude-code-templates/docs/components.json";
     let candidates = [
         std::env::current_dir().ok(),
-        std::env::current_dir().ok().and_then(|p| p.parent().map(|p| p.to_path_buf())),
+        std::env::current_dir()
+            .ok()
+            .and_then(|p| p.parent().map(|p| p.to_path_buf())),
     ];
 
     for candidate in candidates.into_iter().flatten() {
@@ -2183,22 +2381,28 @@ fn get_templates_catalog(app_handle: tauri::AppHandle) -> Result<TemplatesCatalo
     let raw: serde_json::Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
 
     // Parse each component type, defaulting to empty arrays
-    let agents: Vec<TemplateComponent> = raw.get("agents")
+    let agents: Vec<TemplateComponent> = raw
+        .get("agents")
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .unwrap_or_default();
-    let commands: Vec<TemplateComponent> = raw.get("commands")
+    let commands: Vec<TemplateComponent> = raw
+        .get("commands")
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .unwrap_or_default();
-    let mcps: Vec<TemplateComponent> = raw.get("mcps")
+    let mcps: Vec<TemplateComponent> = raw
+        .get("mcps")
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .unwrap_or_default();
-    let hooks: Vec<TemplateComponent> = raw.get("hooks")
+    let hooks: Vec<TemplateComponent> = raw
+        .get("hooks")
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .unwrap_or_default();
-    let settings: Vec<TemplateComponent> = raw.get("settings")
+    let settings: Vec<TemplateComponent> = raw
+        .get("settings")
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .unwrap_or_default();
-    let skills: Vec<TemplateComponent> = raw.get("skills")
+    let skills: Vec<TemplateComponent> = raw
+        .get("skills")
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .unwrap_or_default();
 
@@ -2233,15 +2437,18 @@ fn install_mcp_template(name: String, config: String) -> Result<String, String> 
 
     // Extract the actual server config from the template
     // Templates may come as {"mcpServers": {"name": {...}}} or just {...}
-    let server_config = if let Some(mcp_servers) = mcp_config.get("mcpServers").and_then(|v| v.as_object()) {
-        // Template has mcpServers wrapper - extract the first server's config
-        mcp_servers.values().next()
-            .cloned()
-            .unwrap_or(mcp_config.clone())
-    } else {
-        // Template is already the bare config
-        mcp_config
-    };
+    let server_config =
+        if let Some(mcp_servers) = mcp_config.get("mcpServers").and_then(|v| v.as_object()) {
+            // Template has mcpServers wrapper - extract the first server's config
+            mcp_servers
+                .values()
+                .next()
+                .cloned()
+                .unwrap_or(mcp_config.clone())
+        } else {
+            // Template is already the bare config
+            mcp_config
+        };
 
     // Read existing ~/.claude.json or create new
     let mut claude_json: serde_json::Value = if claude_json_path.exists() {
@@ -2278,7 +2485,10 @@ fn uninstall_mcp_template(name: String) -> Result<String, String> {
     let mut claude_json: serde_json::Value =
         serde_json::from_str(&content).map_err(|e| e.to_string())?;
 
-    if let Some(mcp_servers) = claude_json.get_mut("mcpServers").and_then(|v| v.as_object_mut()) {
+    if let Some(mcp_servers) = claude_json
+        .get_mut("mcpServers")
+        .and_then(|v| v.as_object_mut())
+    {
         if mcp_servers.remove(&name).is_none() {
             return Err(format!("MCP '{}' not found", name));
         }
@@ -2320,7 +2530,8 @@ fn install_hook_template(name: String, config: String) -> Result<String, String>
     let settings_path = get_claude_dir().join("settings.json");
 
     // Parse the hook config (should be an object with event type as key)
-    let hook_config: serde_json::Value = serde_json::from_str(&config).map_err(|e| e.to_string())?;
+    let hook_config: serde_json::Value =
+        serde_json::from_str(&config).map_err(|e| e.to_string())?;
 
     let mut settings: serde_json::Value = if settings_path.exists() {
         let content = fs::read_to_string(&settings_path).map_err(|e| e.to_string())?;
@@ -2339,7 +2550,8 @@ fn install_hook_template(name: String, config: String) -> Result<String, String>
         for (event_type, handlers) in hook_obj {
             if let Some(handlers_arr) = handlers.as_array() {
                 // Get existing handlers for this event type
-                let existing = settings["hooks"].get(event_type)
+                let existing = settings["hooks"]
+                    .get(event_type)
                     .and_then(|v| v.as_array())
                     .cloned()
                     .unwrap_or_default();
@@ -2363,7 +2575,8 @@ fn install_setting_template(config: String) -> Result<String, String> {
     let settings_path = get_claude_dir().join("settings.json");
 
     // Parse the setting config
-    let new_settings: serde_json::Value = serde_json::from_str(&config).map_err(|e| e.to_string())?;
+    let new_settings: serde_json::Value =
+        serde_json::from_str(&config).map_err(|e| e.to_string())?;
 
     let mut settings: serde_json::Value = if settings_path.exists() {
         let content = fs::read_to_string(&settings_path).map_err(|e| e.to_string())?;
@@ -2373,7 +2586,9 @@ fn install_setting_template(config: String) -> Result<String, String> {
     };
 
     // Deep merge the new settings
-    if let (Some(existing_obj), Some(new_obj)) = (settings.as_object_mut(), new_settings.as_object()) {
+    if let (Some(existing_obj), Some(new_obj)) =
+        (settings.as_object_mut(), new_settings.as_object())
+    {
         for (key, value) in new_obj {
             existing_obj.insert(key.clone(), value.clone());
         }
@@ -2430,7 +2645,11 @@ fn get_context_files() -> Result<Vec<ContextFile>, String> {
             for entry in entries.filter_map(|e| e.ok()) {
                 let project_path = entry.path();
                 if project_path.is_dir() {
-                    let project_id = project_path.file_name().unwrap().to_string_lossy().to_string();
+                    let project_id = project_path
+                        .file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .to_string();
                     let display_path = decode_project_path(&project_id);
 
                     // Convert project_id back to real path and check for CLAUDE.md
@@ -2586,7 +2805,11 @@ async fn get_command_stats() -> Result<HashMap<String, usize>, String> {
             for session_entry in fs::read_dir(&project_path).map_err(|e| e.to_string())? {
                 let session_entry = session_entry.map_err(|e| e.to_string())?;
                 let session_path = session_entry.path();
-                let name = session_path.file_name().unwrap().to_string_lossy().to_string();
+                let name = session_path
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string();
 
                 if !name.ends_with(".jsonl") || name.starts_with("agent-") {
                     continue;
@@ -2610,7 +2833,8 @@ async fn get_command_stats() -> Result<HashMap<String, usize>, String> {
                             for cap in command_pattern.captures_iter(&new_content) {
                                 if let Some(cmd_name) = cap.get(1) {
                                     // Remove leading "/" to match cmd.name format
-                                    let name = cmd_name.as_str().trim_start_matches('/').to_string();
+                                    let name =
+                                        cmd_name.as_str().trim_start_matches('/').to_string();
                                     *stats.entry(name).or_insert(0) += 1;
                                 }
                             }
@@ -2665,29 +2889,43 @@ fn get_settings() -> Result<ClaudeSettings, String> {
                     for (name, config) in mcp_obj {
                         if let Some(obj) = config.as_object() {
                             // Handle nested mcpServers format (from some installers)
-                            let actual_config = if let Some(nested) = obj.get("mcpServers").and_then(|v| v.as_object()) {
+                            let actual_config = if let Some(nested) =
+                                obj.get("mcpServers").and_then(|v| v.as_object())
+                            {
                                 nested.values().next().and_then(|v| v.as_object())
                             } else {
                                 Some(obj)
                             };
 
                             if let Some(cfg) = actual_config {
-                                let description = cfg.get("description")
+                                let description = cfg
+                                    .get("description")
                                     .and_then(|v| v.as_str())
                                     .map(String::from);
-                                let command = cfg.get("command")
+                                let command = cfg
+                                    .get("command")
                                     .and_then(|v| v.as_str())
                                     .unwrap_or("")
                                     .to_string();
-                                let args: Vec<String> = cfg.get("args")
+                                let args: Vec<String> = cfg
+                                    .get("args")
                                     .and_then(|v| v.as_array())
-                                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                                    .map(|arr| {
+                                        arr.iter()
+                                            .filter_map(|v| v.as_str().map(String::from))
+                                            .collect()
+                                    })
                                     .unwrap_or_default();
-                                let env: HashMap<String, String> = cfg.get("env")
+                                let env: HashMap<String, String> = cfg
+                                    .get("env")
                                     .and_then(|v| v.as_object())
-                                    .map(|m| m.iter().filter_map(|(k, v)| {
-                                        v.as_str().map(|s| (k.clone(), s.to_string()))
-                                    }).collect())
+                                    .map(|m| {
+                                        m.iter()
+                                            .filter_map(|(k, v)| {
+                                                v.as_str().map(|s| (k.clone(), s.to_string()))
+                                            })
+                                            .collect()
+                                    })
                                     .unwrap_or_default();
 
                                 mcp_servers.push(McpServer {
@@ -2791,7 +3029,10 @@ fn open_in_editor(path: String) -> Result<(), String> {
 
 #[tauri::command]
 fn get_settings_path() -> String {
-    get_claude_dir().join("settings.json").to_string_lossy().to_string()
+    get_claude_dir()
+        .join("settings.json")
+        .to_string_lossy()
+        .to_string()
 }
 
 #[tauri::command]
@@ -2839,7 +3080,11 @@ fn update_mcp_env(server_name: String, env_key: String, env_value: String) -> Re
 }
 
 #[tauri::command]
-fn update_settings_env(env_key: String, env_value: String, is_new: Option<bool>) -> Result<(), String> {
+fn update_settings_env(
+    env_key: String,
+    env_value: String,
+    is_new: Option<bool>,
+) -> Result<(), String> {
     let settings_path = get_claude_dir().join("settings.json");
     let mut settings: serde_json::Value = if settings_path.exists() {
         let content = fs::read_to_string(&settings_path).map_err(|e| e.to_string())?;
@@ -2881,19 +3126,26 @@ fn delete_settings_env(env_key: String) -> Result<(), String> {
         return Ok(());
     }
     let content = fs::read_to_string(&settings_path).map_err(|e| e.to_string())?;
-    let mut settings: serde_json::Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+    let mut settings: serde_json::Value =
+        serde_json::from_str(&content).map_err(|e| e.to_string())?;
 
     if let Some(env) = settings.get_mut("env").and_then(|v| v.as_object_mut()) {
         env.remove(&env_key);
     }
 
     // Also remove from custom keys list
-    if let Some(custom_keys) = settings.get_mut("_lovcode_custom_env_keys").and_then(|v| v.as_array_mut()) {
+    if let Some(custom_keys) = settings
+        .get_mut("_lovcode_custom_env_keys")
+        .and_then(|v| v.as_array_mut())
+    {
         custom_keys.retain(|v| v.as_str() != Some(&env_key));
     }
 
     // Also remove from disabled env if present
-    if let Some(disabled) = settings.get_mut("_lovcode_disabled_env").and_then(|v| v.as_object_mut()) {
+    if let Some(disabled) = settings
+        .get_mut("_lovcode_disabled_env")
+        .and_then(|v| v.as_object_mut())
+    {
         disabled.remove(&env_key);
     }
 
@@ -2910,7 +3162,8 @@ fn disable_settings_env(env_key: String) -> Result<(), String> {
         return Ok(());
     }
     let content = fs::read_to_string(&settings_path).map_err(|e| e.to_string())?;
-    let mut settings: serde_json::Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+    let mut settings: serde_json::Value =
+        serde_json::from_str(&content).map_err(|e| e.to_string())?;
 
     // Get current value before removing
     let current_value = settings
@@ -2926,7 +3179,11 @@ fn disable_settings_env(env_key: String) -> Result<(), String> {
     }
 
     // Store in disabled env
-    if !settings.get("_lovcode_disabled_env").and_then(|v| v.as_object()).is_some() {
+    if !settings
+        .get("_lovcode_disabled_env")
+        .and_then(|v| v.as_object())
+        .is_some()
+    {
         settings["_lovcode_disabled_env"] = serde_json::json!({});
     }
     settings["_lovcode_disabled_env"][&env_key] = serde_json::Value::String(current_value);
@@ -2944,7 +3201,8 @@ fn enable_settings_env(env_key: String) -> Result<(), String> {
         return Ok(());
     }
     let content = fs::read_to_string(&settings_path).map_err(|e| e.to_string())?;
-    let mut settings: serde_json::Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+    let mut settings: serde_json::Value =
+        serde_json::from_str(&content).map_err(|e| e.to_string())?;
 
     // Get value from disabled env
     let disabled_value = settings
@@ -2955,7 +3213,10 @@ fn enable_settings_env(env_key: String) -> Result<(), String> {
         .to_string();
 
     // Remove from disabled env
-    if let Some(disabled) = settings.get_mut("_lovcode_disabled_env").and_then(|v| v.as_object_mut()) {
+    if let Some(disabled) = settings
+        .get_mut("_lovcode_disabled_env")
+        .and_then(|v| v.as_object_mut())
+    {
         disabled.remove(&env_key);
     }
 
@@ -2979,7 +3240,11 @@ struct ZenmuxTestResult {
 }
 
 #[tauri::command]
-async fn test_zenmux_connection(base_url: String, auth_token: String, model: String) -> Result<ZenmuxTestResult, String> {
+async fn test_zenmux_connection(
+    base_url: String,
+    auth_token: String,
+    model: String,
+) -> Result<ZenmuxTestResult, String> {
     if auth_token.trim().is_empty() {
         return Err("ZENMUX_API_KEY/ANTHROPIC_AUTH_TOKEN is empty".to_string());
     }
@@ -3029,8 +3294,8 @@ async fn test_zenmux_connection(base_url: String, auth_token: String, model: Str
 
 #[cfg(target_os = "macos")]
 fn setup_float_window_macos(app: &tauri::App) {
-    use tauri::Manager;
     use objc::*;
+    use tauri::Manager;
 
     if let Some(window) = app.get_webview_window("float") {
         // 获取原生 NSWindow 句柄
@@ -3042,9 +3307,10 @@ fn setup_float_window_macos(app: &tauri::App) {
                 ns_win.setAcceptsMouseMovedEvents_(YES);
 
                 // 设置窗口行为：可以出现在所有空间，且不激活
-                let behavior = NSWindowCollectionBehavior::NSWindowCollectionBehaviorCanJoinAllSpaces
-                    | NSWindowCollectionBehavior::NSWindowCollectionBehaviorStationary
-                    | NSWindowCollectionBehavior::NSWindowCollectionBehaviorIgnoresCycle;
+                let behavior =
+                    NSWindowCollectionBehavior::NSWindowCollectionBehaviorCanJoinAllSpaces
+                        | NSWindowCollectionBehavior::NSWindowCollectionBehaviorStationary
+                        | NSWindowCollectionBehavior::NSWindowCollectionBehaviorIgnoresCycle;
                 ns_win.setCollectionBehavior_(behavior);
 
                 // 设置窗口级别为悬浮面板 (NSFloatingWindowLevel = 3)
@@ -3100,7 +3366,8 @@ fn get_cursor_position_in_window(app_handle: tauri::AppHandle, label: String) ->
             if let Ok(ns_window) = window.ns_window() {
                 unsafe {
                     let ns_win: id = ns_window as id;
-                    let location: cocoa::foundation::NSPoint = msg_send![class!(NSEvent), mouseLocation];
+                    let location: cocoa::foundation::NSPoint =
+                        msg_send![class!(NSEvent), mouseLocation];
                     let window_point: cocoa::foundation::NSPoint =
                         msg_send![ns_win, convertPointFromScreen: location];
                     let content_view: id = msg_send![ns_win, contentView];
@@ -3108,21 +3375,23 @@ fn get_cursor_position_in_window(app_handle: tauri::AppHandle, label: String) ->
                     if content_view != nil {
                         let view_point: cocoa::foundation::NSPoint =
                             msg_send![content_view, convertPoint: window_point fromView: nil];
-                        let view_bounds: cocoa::foundation::NSRect = msg_send![content_view, bounds];
+                        let view_bounds: cocoa::foundation::NSRect =
+                            msg_send![content_view, bounds];
                         let width = view_bounds.size.width;
                         let height = view_bounds.size.height;
                         let local_x = view_point.x - view_bounds.origin.x;
                         let local_y = view_point.y - view_bounds.origin.y;
                         let flipped: BOOL = msg_send![content_view, isFlipped];
 
-                        if local_x >= 0.0
-                            && local_x <= width
-                            && local_y >= 0.0
-                            && local_y <= height
+                        if local_x >= 0.0 && local_x <= width && local_y >= 0.0 && local_y <= height
                         {
                             result.in_window = true;
                             result.x = local_x;
-                            result.y = if flipped == YES { local_y } else { height - local_y };
+                            result.y = if flipped == YES {
+                                local_y
+                            } else {
+                                height - local_y
+                            };
                         }
                     }
                 }
@@ -3179,8 +3448,12 @@ fn set_cursor(cursor_type: String) {
                 "grab" => msg_send![cursor_class, openHandCursor],
                 "grabbing" => msg_send![cursor_class, closedHandCursor],
                 "not-allowed" => msg_send![cursor_class, operationNotAllowedCursor],
-                "resize-ew" | "ew-resize" | "col-resize" => msg_send![cursor_class, resizeLeftRightCursor],
-                "resize-ns" | "ns-resize" | "row-resize" => msg_send![cursor_class, resizeUpDownCursor],
+                "resize-ew" | "ew-resize" | "col-resize" => {
+                    msg_send![cursor_class, resizeLeftRightCursor]
+                }
+                "resize-ns" | "ns-resize" | "row-resize" => {
+                    msg_send![cursor_class, resizeUpDownCursor]
+                }
                 _ => msg_send![cursor_class, arrowCursor], // default
             };
             let _: () = msg_send![cursor, set];
@@ -3198,7 +3471,10 @@ fn set_cursor(cursor_type: String) {
 
 #[tauri::command]
 fn navigate_to_tmux_pane(session: String, window: String, pane: String) -> Result<(), String> {
-    println!("[DEBUG][navigate_to_tmux_pane] 入口: session={}, window={}, pane={}", session, window, pane);
+    println!(
+        "[DEBUG][navigate_to_tmux_pane] 入口: session={}, window={}, pane={}",
+        session, window, pane
+    );
 
     let target = format!("{}:{}.{}", session, window, pane);
 
@@ -3223,7 +3499,8 @@ fn navigate_to_tmux_pane(session: String, window: String, pane: String) -> Resul
     {
         // 参考 Lovnotifier 的 activate.sh 实现
         // 遍历 windows -> tabs -> sessions，通过 session name 匹配 tmux session
-        let script = format!(r#"
+        let script = format!(
+            r#"
             tell application "iTerm2"
                 activate
                 repeat with w in windows
@@ -3240,17 +3517,24 @@ fn navigate_to_tmux_pane(session: String, window: String, pane: String) -> Resul
                 end repeat
                 return "NOT_FOUND"
             end tell
-        "#, session);
+        "#,
+            session
+        );
 
-        println!("[DEBUG][navigate_to_tmux_pane] iTerm2 查找 session name 包含 '{}'", session);
+        println!(
+            "[DEBUG][navigate_to_tmux_pane] iTerm2 查找 session name 包含 '{}'",
+            session
+        );
         let result = std::process::Command::new("osascript")
             .args(["-e", &script])
             .output();
 
         match &result {
             Ok(output) => {
-                println!("[DEBUG][navigate_to_tmux_pane] iTerm2 结果: {}",
-                    String::from_utf8_lossy(&output.stdout).trim());
+                println!(
+                    "[DEBUG][navigate_to_tmux_pane] iTerm2 结果: {}",
+                    String::from_utf8_lossy(&output.stdout).trim()
+                );
             }
             Err(e) => {
                 println!("[DEBUG][navigate_to_tmux_pane] iTerm2 错误: {}", e);
@@ -3265,7 +3549,11 @@ fn navigate_to_tmux_pane(session: String, window: String, pane: String) -> Resul
         }
         if !pane.is_empty() {
             let _ = std::process::Command::new("tmux")
-                .args(["select-pane", "-t", &format!("{}:{}.{}", session, window, pane)])
+                .args([
+                    "select-pane",
+                    "-t",
+                    &format!("{}:{}.{}", session, window, pane),
+                ])
                 .output();
         }
     }
@@ -3303,10 +3591,13 @@ fn start_notify_server(app_handle: tauri::AppHandle) {
             .map(move |payload: NotifyPayload| {
                 let app = app_for_notify.clone();
                 let item = ReviewItem {
-                    id: format!("{}", std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis()),
+                    id: format!(
+                        "{}",
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis()
+                    ),
                     seq: next_review_seq(),
                     title: payload.title,
                     project: payload.project,
@@ -3325,7 +3616,10 @@ fn start_notify_server(app_handle: tauri::AppHandle) {
                 {
                     let mut queue = REVIEW_QUEUE.lock().unwrap();
                     // Remove existing items with same terminal identity
-                    if item.tmux_session.is_some() || item.tmux_window.is_some() || item.tmux_pane.is_some() {
+                    if item.tmux_session.is_some()
+                        || item.tmux_window.is_some()
+                        || item.tmux_pane.is_some()
+                    {
                         queue.retain(|existing| {
                             // Keep if terminal identity differs
                             existing.tmux_session != item.tmux_session
@@ -3343,16 +3637,17 @@ fn start_notify_server(app_handle: tauri::AppHandle) {
                 // Update tray menu
                 update_tray_menu(&app);
 
+                // Persist queue
+                save_review_queue();
+
                 warp::reply::json(&serde_json::json!({"ok": true, "id": item.id}))
             });
 
         // GET /queue - get current queue (for debugging)
-        let queue_route = warp::get()
-            .and(warp::path("queue"))
-            .map(|| {
-                let queue = REVIEW_QUEUE.lock().unwrap().clone();
-                warp::reply::json(&queue)
-            });
+        let queue_route = warp::get().and(warp::path("queue")).map(|| {
+            let queue = REVIEW_QUEUE.lock().unwrap().clone();
+            warp::reply::json(&queue)
+        });
 
         // DELETE /queue/:id - dismiss an item
         let dismiss_route = warp::delete()
@@ -3366,7 +3661,10 @@ fn start_notify_server(app_handle: tauri::AppHandle) {
 
         let routes = notify_route.or(queue_route).or(dismiss_route);
 
-        println!("[Lovcode] Notification server starting on port {}", NOTIFY_SERVER_PORT);
+        println!(
+            "[Lovcode] Notification server starting on port {}",
+            NOTIFY_SERVER_PORT
+        );
         warp::serve(routes)
             .run(([127, 0, 0, 1], NOTIFY_SERVER_PORT))
             .await;
@@ -3392,30 +3690,26 @@ fn build_tray_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<Menu<
 
         for item in sorted.iter().take(10) {
             let label = format!("#{} {}", item.seq, truncate_str(&item.title, 30));
-            let menu_item = MenuItemBuilder::with_id(format!("msg:{}", item.id), label)
-                .build(app)?;
+            let menu_item =
+                MenuItemBuilder::with_id(format!("msg:{}", item.id), label).build(app)?;
             menu_builder = menu_builder.item(&menu_item);
         }
 
         if queue.len() > 10 {
-            let more_item = MenuItemBuilder::with_id("more", format!("... and {} more", queue.len() - 10))
-                .enabled(false)
-                .build(app)?;
+            let more_item =
+                MenuItemBuilder::with_id("more", format!("... and {} more", queue.len() - 10))
+                    .enabled(false)
+                    .build(app)?;
             menu_builder = menu_builder.item(&more_item);
         }
     }
 
     menu_builder = menu_builder.separator();
 
-    let show_main = MenuItemBuilder::with_id("show_main", "Show Main Window")
-        .build(app)?;
-    let show_float = MenuItemBuilder::with_id("show_float", "Show Float Window")
-        .build(app)?;
+    let show_main = MenuItemBuilder::with_id("show_main", "Show Main Window").build(app)?;
+    let show_float = MenuItemBuilder::with_id("show_float", "Show Float Window").build(app)?;
 
-    menu_builder
-        .item(&show_main)
-        .item(&show_float)
-        .build()
+    menu_builder.item(&show_main).item(&show_float).build()
 }
 
 // Truncate string for menu display
@@ -3439,12 +3733,17 @@ fn consume_review_item<R: tauri::Runtime>(app: &tauri::AppHandle<R>, msg_id: &st
     if let Some(item) = item {
         // Navigate to tmux pane if available
         if let (Some(session), Some(window), Some(pane)) =
-            (&item.tmux_session, &item.tmux_window, &item.tmux_pane) {
+            (&item.tmux_session, &item.tmux_window, &item.tmux_pane)
+        {
             let _ = std::process::Command::new("tmux")
                 .args(["select-window", "-t", &format!("{}:{}", session, window)])
                 .status();
             let _ = std::process::Command::new("tmux")
-                .args(["select-pane", "-t", &format!("{}:{}.{}", session, window, pane)])
+                .args([
+                    "select-pane",
+                    "-t",
+                    &format!("{}:{}.{}", session, window, pane),
+                ])
                 .status();
         }
 
@@ -3454,12 +3753,14 @@ fn consume_review_item<R: tauri::Runtime>(app: &tauri::AppHandle<R>, msg_id: &st
             if let Some(pos) = queue.iter().position(|i| i.id == msg_id) {
                 let removed = queue.remove(pos);
 
+                // Persist to disk
+                persist_completed_item(&removed);
+
                 // Add to completed queue
                 let mut completed = COMPLETED_QUEUE.lock().unwrap();
                 completed.insert(0, removed);
                 // Keep only last 100 completed items
                 completed.truncate(100);
-                save_completed_queue();
             }
         }
 
@@ -3468,15 +3769,26 @@ fn consume_review_item<R: tauri::Runtime>(app: &tauri::AppHandle<R>, msg_id: &st
 
         // Update tray menu
         update_tray_menu(app);
+
+        // Persist queue
+        save_review_queue();
     }
 }
 
-// Update tray menu (call after queue changes)
+// Update tray menu and badge (call after queue changes)
 fn update_tray_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     if let Some(tray) = app.tray_by_id("main-tray") {
         if let Ok(menu) = build_tray_menu(app) {
             let _ = tray.set_menu(Some(menu));
         }
+        // Update title to show message count
+        let count = REVIEW_QUEUE.lock().unwrap().len();
+        let title = if count > 0 {
+            Some(count.to_string())
+        } else {
+            None
+        };
+        let _ = tray.set_title(title);
     }
 }
 
@@ -3491,6 +3803,9 @@ pub fn run() {
             // Load persisted review sequence number
             load_review_seq();
 
+            // Load persisted review queue
+            load_review_queue();
+
             // Load persisted completed queue
             load_completed_queue();
 
@@ -3500,6 +3815,36 @@ pub fn run() {
             // Configure float window for macOS (non-activating panel)
             #[cfg(target_os = "macos")]
             setup_float_window_macos(app);
+
+            // Register global shortcut F4 to consume oldest message
+            #[cfg(desktop)]
+            {
+                use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Shortcut, ShortcutState};
+
+                let f4_shortcut = Shortcut::new(None, Code::F4);
+                let shortcut_app = app.handle().clone();
+
+                app.handle().plugin(
+                    tauri_plugin_global_shortcut::Builder::new()
+                        .with_handler(move |_app, shortcut, event| {
+                            if shortcut == &f4_shortcut && event.state() == ShortcutState::Pressed {
+                                // Consume oldest message
+                                let oldest_id = {
+                                    let queue = REVIEW_QUEUE.lock().unwrap();
+                                    queue.iter()
+                                        .min_by_key(|item| item.timestamp)
+                                        .map(|item| item.id.clone())
+                                };
+                                if let Some(id) = oldest_id {
+                                    consume_review_item(&shortcut_app, &id);
+                                }
+                            }
+                        })
+                        .build(),
+                )?;
+
+                app.global_shortcut().register(f4_shortcut)?;
+            }
 
             // Start watching distill directory for changes
             let app_handle = app.handle().clone();
@@ -3591,12 +3936,18 @@ pub fn run() {
             app.set_menu(menu)?;
 
             // Create system tray
-            let tray_menu = build_tray_menu(app)?;
-            let _tray = TrayIconBuilder::with_id("main-tray")
+            let app_handle = app.handle();
+            let tray_menu = build_tray_menu(app_handle)?;
+            let initial_count = REVIEW_QUEUE.lock().unwrap().len();
+            let mut tray_builder = TrayIconBuilder::with_id("main-tray")
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&tray_menu)
-                .menu_on_left_click(true)
-                .tooltip("Lovcode Messages")
+                .show_menu_on_left_click(true)
+                .tooltip("Lovcode Messages");
+            if initial_count > 0 {
+                tray_builder = tray_builder.title(initial_count.to_string());
+            }
+            let _tray = tray_builder
                 .on_menu_event(|app, event| {
                     let id = event.id.as_ref();
                     if id.starts_with("msg:") {

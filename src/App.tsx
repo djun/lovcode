@@ -3783,7 +3783,6 @@ function SettingsView({
                     <tr key={key} className="border-b border-border/60 last:border-0">
                       <td className="py-2 pr-2">
                         <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded font-mono">{key}</span>
-                        {isCustom && <span className="ml-1 text-[10px] text-muted-foreground">(custom)</span>}
                       </td>
                       <td className="py-2 pr-2">
                         {editingEnvKey === key ? (
@@ -3798,8 +3797,13 @@ function SettingsView({
                             }}
                           />
                         ) : (
-                          <span className="text-xs text-muted-foreground font-mono">
-                            {isRevealed ? (value || "(empty)") : "••••••"}
+                          <span className="inline-flex items-center gap-1">
+                            <span className="text-xs text-muted-foreground font-mono">
+                              {isRevealed ? (value || "(empty)") : "••••••"}
+                            </span>
+                            <button onClick={() => toggleEnvReveal(key)} className="text-muted-foreground hover:text-foreground p-0.5" title={isRevealed ? "Hide" : "View"}>
+                              {isRevealed ? <EyeClosedIcon className="w-3.5 h-3.5" /> : <EyeOpenIcon className="w-3.5 h-3.5" />}
+                            </button>
                           </span>
                         )}
                       </td>
@@ -3833,9 +3837,6 @@ function SettingsView({
                             variant="env"
                             icon={(
                               <>
-                                <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => toggleEnvReveal(key)} title={isRevealed ? "Hide" : "View"} aria-label={isRevealed ? "Hide" : "View"}>
-                                  {isRevealed ? <EyeClosedIcon /> : <EyeOpenIcon />}
-                                </Button>
                                 <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => handleEnvEdit(key, value)} title="Edit" aria-label="Edit">
                                   <Pencil1Icon />
                                 </Button>
@@ -3858,9 +3859,6 @@ function SettingsView({
                             )}
                             text={(
                               <>
-                                <Button size="sm" variant="outline" onClick={() => toggleEnvReveal(key)}>
-                                  {isRevealed ? "Hide" : "View"}
-                                </Button>
                                 <Button size="sm" variant="outline" onClick={() => handleEnvEdit(key, value)}>
                                   Edit
                                 </Button>
@@ -3907,11 +3905,15 @@ function SettingsView({
                       <tr key={key} className="border-b border-border/60 last:border-0 opacity-60">
                         <td className="py-2 pr-2">
                           <span className="text-xs bg-muted/50 text-muted-foreground px-2 py-1 rounded font-mono line-through">{key}</span>
-                          {isCustom && <span className="ml-1 text-[10px] text-muted-foreground">(custom)</span>}
                         </td>
                         <td className="py-2 pr-2">
-                          <span className="text-xs text-muted-foreground font-mono">
-                            {isRevealed ? (value || "(empty)") : "••••••"}
+                          <span className="inline-flex items-center gap-1">
+                            <span className="text-xs text-muted-foreground font-mono">
+                              {isRevealed ? (value || "(empty)") : "••••••"}
+                            </span>
+                            <button onClick={() => toggleEnvReveal(key)} className="text-muted-foreground hover:text-foreground p-0.5" title={isRevealed ? "Hide" : "View"}>
+                              {isRevealed ? <EyeClosedIcon className="w-3.5 h-3.5" /> : <EyeOpenIcon className="w-3.5 h-3.5" />}
+                            </button>
                           </span>
                         </td>
                         <td className="py-2 px-2 whitespace-nowrap text-right env-actions-cell w-[1%]">
@@ -3919,10 +3921,6 @@ function SettingsView({
                             variant="env"
                             icon={(
                               <>
-                                <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => toggleEnvReveal(key)} title={isRevealed ? "Hide" : "View"} aria-label={isRevealed ? "Hide" : "View"}>
-                                  {isRevealed ? <EyeClosedIcon /> : <EyeOpenIcon />}
-                                </Button>
-                                <div className="h-8 w-8" />
                                 <Button size="icon" variant="outline" className="h-8 w-8 text-green-600 border-green-200 hover:bg-green-50" onClick={() => handleEnvEnable(key)} title="Enable" aria-label="Enable">
                                   <PlusCircledIcon />
                                 </Button>
@@ -3942,10 +3940,6 @@ function SettingsView({
                             )}
                             text={(
                               <>
-                                <Button size="sm" variant="outline" onClick={() => toggleEnvReveal(key)}>
-                                  {isRevealed ? "Hide" : "View"}
-                                </Button>
-                                <Button size="sm" variant="outline" className="invisible">Edit</Button>
                                 <Button size="sm" variant="outline" className="text-green-600 border-green-200 hover:bg-green-50" onClick={() => handleEnvEnable(key)}>
                                   Enable
                                 </Button>
