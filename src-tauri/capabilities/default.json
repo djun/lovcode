@@ -16,6 +16,7 @@
     "core:window:allow-available-monitors",
     "core:window:allow-start-dragging",
     "core:window:allow-get-all-windows",
+    "core:window:allow-set-focus",
     "opener:default",
     "opener:allow-open-path",
     "dialog:default"

@@ -432,8 +432,13 @@ function App() {
   // Restore float window visibility on mount
   useEffect(() => {
     if (floatWindowVisible) {
-      WebviewWindow.getByLabel("float").then(win => {
-        if (win) win.show();
+      WebviewWindow.getByLabel("float").then(async (win) => {
+        if (win) {
+          await win.show();
+          // Refocus main window after showing float window
+          const mainWin = await WebviewWindow.getByLabel("main");
+          if (mainWin) await mainWin.setFocus();
+        }
       });
     }
   }, []);

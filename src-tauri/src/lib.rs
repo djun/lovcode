@@ -3522,13 +3522,46 @@ fn setup_float_window_macos(app: &tauri::App) {
     }
 }
 
-/// 激活应用并将其带到前台 (macOS)
+/// 激活应用并聚焦指定窗口 (macOS)
+/// 使用 dispatch_after 确保在 window.show() 异步操作完成后再激活
 #[cfg(target_os = "macos")]
-fn activate_app() {
+fn activate_and_focus_window(window: &tauri::WebviewWindow) {
+    use cocoa::appkit::NSApplicationActivationPolicy;
+    use cocoa::base::id;
     use objc::*;
+
+    // 获取 NSWindow 句柄
+    let ns_window = match window.ns_window() {
+        Ok(w) => w as usize, // 转为 usize 以便跨闭包传递
+        Err(_) => return,
+    };
+
     unsafe {
-        let ns_app: objc::runtime::Object = msg_send![class!(NSApplication), sharedApplication];
-        let _: () = msg_send![&ns_app, activateIgnoringOtherApps: objc::runtime::YES];
+        let app = cocoa::appkit::NSApp();
+
+        // 1. 确保应用是 Regular 类型（可以接收焦点）
+        let _: () = msg_send![app, setActivationPolicy: NSApplicationActivationPolicy::NSApplicationActivationPolicyRegular];
+
+        // 2. 激活应用（立即执行）
+        let _: () = msg_send![app, activateIgnoringOtherApps: YES];
+
+        // 3. 延迟执行窗口聚焦，等待 window.show() 完成
+        // 使用 performSelector:withObject:afterDelay: 在主线程的 run loop 中延迟执行
+        // 50ms 足够让 macOS 完成窗口显示动画
+        let ns_win: id = ns_window as id;
+        let nil_ptr: id = std::ptr::null_mut();
+
+        let sel_make_key = sel!(makeKeyAndOrderFront:);
+        let sel_order_front = sel!(orderFrontRegardless);
+        let sel_make_main = sel!(makeMainWindow);
+
+        // 延迟 50ms 后执行
+        let delay: f64 = 0.05;
+        let _: () = msg_send![ns_win, performSelector:sel_make_key withObject:nil_ptr afterDelay:delay];
+        let _: () = msg_send![ns_win, performSelector:sel_order_front withObject:nil_ptr afterDelay:delay];
+        let _: () = msg_send![ns_win, performSelector:sel_make_main withObject:nil_ptr afterDelay:delay];
+
+        println!("[Lovcode] Window activation scheduled (50ms delay)");
     }
 }
 
@@ -4146,6 +4179,9 @@ pub fn run() {
                                 let _ = window.hide();
                             } else {
                                 let _ = window.show();
+                                #[cfg(target_os = "macos")]
+                                activate_and_focus_window(&window);
+                                #[cfg(not(target_os = "macos"))]
                                 let _ = window.set_focus();
                             }
                         } else {
@@ -4159,6 +4195,9 @@ pub fn run() {
                                 .build()
                             {
                                 let _ = window.show();
+                                #[cfg(target_os = "macos")]
+                                activate_and_focus_window(&window);
+                                #[cfg(not(target_os = "macos"))]
                                 let _ = window.set_focus();
                             }
                         }
@@ -4212,21 +4251,26 @@ pub fn run() {
                             let _ = window.hide();
                         } else {
                             let _ = window.show();
+                            #[cfg(target_os = "macos")]
+                            activate_and_focus_window(&window);
+                            #[cfg(not(target_os = "macos"))]
                             let _ = window.set_focus();
                         }
                     } else {
                         // Recreate main window
                         #[cfg(target_os = "macos")]
-                        if let Ok(window) = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
-                            .title("Lovcode")
-                            .inner_size(800.0, 600.0)
-                            .title_bar_style(tauri::TitleBarStyle::Overlay)
-                            .hidden_title(true)
-                            .traffic_light_position(tauri::Position::Logical(tauri::LogicalPosition::new(16.0, 28.0)))
-                            .build()
                         {
-                            let _ = window.show();
-                            let _ = window.set_focus();
+                            if let Ok(window) = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
+                                .title("Lovcode")
+                                .inner_size(800.0, 600.0)
+                                .title_bar_style(tauri::TitleBarStyle::Overlay)
+                                .hidden_title(true)
+                                .traffic_light_position(tauri::Position::Logical(tauri::LogicalPosition::new(16.0, 28.0)))
+                                .build()
+                            {
+                                let _ = window.show();
+                                activate_and_focus_window(&window);
+                            }
                         }
                         #[cfg(not(target_os = "macos"))]
                         if let Ok(window) = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
@@ -4365,6 +4409,9 @@ pub fn run() {
                     if let Some(window) = app.get_webview_window("main") {
                         println!("[Lovcode] Main window exists, showing...");
                         let _ = window.show();
+                        #[cfg(target_os = "macos")]
+                        activate_and_focus_window(&window);
+                        #[cfg(not(target_os = "macos"))]
                         let _ = window.set_focus();
                     } else {
                         println!("[Lovcode] Main window gone, recreating...");
@@ -4379,6 +4426,9 @@ pub fn run() {
                             Ok(window) => {
                                 println!("[Lovcode] Window created successfully");
                                 let _ = window.show();
+                                #[cfg(target_os = "macos")]
+                                activate_and_focus_window(&window);
+                                #[cfg(not(target_os = "macos"))]
                                 let _ = window.set_focus();
                             }
                             Err(e) => {
