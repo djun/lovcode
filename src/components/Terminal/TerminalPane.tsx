@@ -103,12 +103,12 @@ export function TerminalPane({
       try {
         await invoke("pty_create", { id: ptyId, cwd });
 
-        // Resize PTY to match terminal dimensions
+        // Resize PTY to match terminal dimensions (ignore if session already exited)
         await invoke("pty_resize", {
           id: ptyId,
           cols: term.cols,
           rows: term.rows,
-        });
+        }).catch(() => {});
 
         onReady?.();
       } catch (err) {

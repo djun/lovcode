@@ -377,6 +377,37 @@ export function WorkspaceView() {
     [activeProject, workspace, saveWorkspace]
   );
 
+  // Reload panel handler (creates new PTY)
+  const handlePanelReload = useCallback(
+    (panelId: string) => {
+      if (!activeProject || !workspace) return;
+
+      const newPtyId = crypto.randomUUID();
+
+      const newProjects = workspace.projects.map((p) => {
+        if (p.id !== activeProject.id) return p;
+        return {
+          ...p,
+          features: p.features.map((f) => ({
+            ...f,
+            panels: f.panels.map((panel) =>
+              panel.id === panelId ? { ...panel, pty_id: newPtyId } : panel
+            ),
+          })),
+          shared_panels: p.shared_panels.map((panel) =>
+            panel.id === panelId ? { ...panel, pty_id: newPtyId } : panel
+          ),
+        };
+      });
+
+      saveWorkspace({
+        ...workspace,
+        projects: newProjects,
+      });
+    },
+    [activeProject, workspace, saveWorkspace]
+  );
+
   // Panel title change handler
   const handlePanelTitleChange = useCallback(
     (panelId: string, title: string) => {
@@ -475,6 +506,7 @@ export function WorkspaceView() {
                             panels={sharedPanels}
                             onPanelClose={handlePanelClose}
                             onPanelToggleShared={handlePanelToggleShared}
+                            onPanelReload={handlePanelReload}
                             onPanelTitleChange={handlePanelTitleChange}
                           />
                         </Panel>
@@ -489,6 +521,7 @@ export function WorkspaceView() {
                         onPanelClose={handlePanelClose}
                         onPanelAdd={handlePanelAdd}
                         onPanelToggleShared={handlePanelToggleShared}
+                        onPanelReload={handlePanelReload}
                         onPanelTitleChange={handlePanelTitleChange}
                         direction={activeFeature.layout_direction || "horizontal"}
                         autoSaveId={activeFeature.id}

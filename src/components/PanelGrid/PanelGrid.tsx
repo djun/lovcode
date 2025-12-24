@@ -4,7 +4,7 @@ import {
   Panel,
   Separator as PanelResizeHandle,
 } from "react-resizable-panels";
-import { Cross2Icon, PlusIcon, RowsIcon, ColumnsIcon, PinLeftIcon, DotsVerticalIcon } from "@radix-ui/react-icons";
+import { Cross2Icon, PlusIcon, RowsIcon, ColumnsIcon, PinLeftIcon, DotsVerticalIcon, ReloadIcon } from "@radix-ui/react-icons";
 import { TerminalPane } from "../Terminal";
 import {
   DropdownMenu,
@@ -31,6 +31,8 @@ export interface PanelGridProps {
   onPanelAdd: (direction: "horizontal" | "vertical") => void;
   /** Callback when panel shared state is toggled */
   onPanelToggleShared: (id: string) => void;
+  /** Callback when panel is reloaded */
+  onPanelReload: (id: string) => void;
   /** Callback when panel title changes */
   onPanelTitleChange: (id: string, title: string) => void;
   /** Layout direction */
@@ -44,6 +46,7 @@ export function PanelGrid({
   onPanelClose,
   onPanelAdd,
   onPanelToggleShared,
+  onPanelReload,
   onPanelTitleChange,
   direction = "horizontal",
   autoSaveId,
@@ -102,6 +105,10 @@ export function PanelGrid({
                       </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => onPanelReload(panel.id)}>
+                        <ReloadIcon className="w-4 h-4 mr-2" />
+                        Reload
+                      </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => onPanelToggleShared(panel.id)}>
                         <PinLeftIcon className="w-4 h-4 mr-2" />
                         {panel.isShared ? "Unpin" : "Pin to shared"}
@@ -148,6 +155,7 @@ export interface SharedPanelZoneProps {
   panels: PanelState[];
   onPanelClose: (id: string) => void;
   onPanelToggleShared: (id: string) => void;
+  onPanelReload: (id: string) => void;
   onPanelTitleChange: (id: string, title: string) => void;
 }
 
@@ -155,6 +163,7 @@ export function SharedPanelZone({
   panels,
   onPanelClose,
   onPanelToggleShared,
+  onPanelReload,
   onPanelTitleChange,
 }: SharedPanelZoneProps) {
   const handleTitleChange = useCallback(
@@ -189,6 +198,10 @@ export function SharedPanelZone({
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => onPanelReload(panel.id)}>
+                    <ReloadIcon className="w-4 h-4 mr-2" />
+                    Reload
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => onPanelToggleShared(panel.id)}>
                     <PinLeftIcon className="w-4 h-4 mr-2" />
                     Unpin
