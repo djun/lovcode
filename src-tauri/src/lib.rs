@@ -3908,8 +3908,13 @@ fn set_claude_code_autoupdater(disabled: bool) -> Result<(), String> {
 // ============================================================================
 
 #[tauri::command]
-fn pty_create(id: String, cwd: String, shell: Option<String>) -> Result<String, String> {
-    pty_manager::create_session(id.clone(), cwd, shell)?;
+fn pty_create(
+    id: String,
+    cwd: String,
+    shell: Option<String>,
+    command: Option<String>,
+) -> Result<String, String> {
+    pty_manager::create_session(id.clone(), cwd, shell, command)?;
     Ok(id)
 }
 

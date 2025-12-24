@@ -445,6 +445,7 @@ export function WorkspaceView() {
       title: p.title,
       isShared: p.is_shared,
       cwd: activeProject?.path || "",
+      command: p.command ?? undefined,
     })) || [];
 
   const sharedPanels: PanelState[] =
@@ -454,6 +455,7 @@ export function WorkspaceView() {
       title: p.title,
       isShared: true,
       cwd: activeProject?.path || "",
+      command: p.command ?? undefined,
     })) || [];
 
   if (loading) {

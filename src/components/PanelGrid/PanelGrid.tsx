@@ -20,6 +20,7 @@ export interface PanelState {
   title: string;
   isShared: boolean;
   cwd: string;
+  command?: string;
 }
 
 export interface PanelGridProps {
@@ -139,6 +140,7 @@ export function PanelGrid({
                 <TerminalPane
                   ptyId={panel.ptyId}
                   cwd={panel.cwd}
+                  command={panel.command}
                   onTitleChange={handleTitleChange(panel.id)}
                 />
               </div>
@@ -178,7 +180,7 @@ export function SharedPanelZone({
   }
 
   return (
-    <div className="h-full flex flex-col gap-1 p-1">
+    <div className="h-full min-w-[280px] flex flex-col gap-1 p-1">
       {panels.map((panel) => (
         <div
           key={panel.id}
@@ -223,6 +225,7 @@ export function SharedPanelZone({
             <TerminalPane
               ptyId={panel.ptyId}
               cwd={panel.cwd}
+              command={panel.command}
               onTitleChange={handleTitleChange(panel.id)}
             />
           </div>

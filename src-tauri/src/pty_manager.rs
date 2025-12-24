@@ -53,7 +53,12 @@ static PTY_MASTERS: LazyLock<Mutex<HashMap<String, Box<dyn portable_pty::MasterP
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// Create a new PTY session with background reader thread
-pub fn create_session(id: String, cwd: String, shell: Option<String>) -> Result<(), String> {
+pub fn create_session(
+    id: String,
+    cwd: String,
+    shell: Option<String>,
+    command: Option<String>,
+) -> Result<(), String> {
     let app_handle = APP_HANDLE
         .get()
         .ok_or_else(|| "PTY manager not initialized".to_string())?
@@ -76,9 +81,21 @@ pub fn create_session(id: String, cwd: String, shell: Option<String>) -> Result<
         std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string())
     });
 
-    // Build and spawn command
-    let mut cmd = CommandBuilder::new(&shell_cmd);
+    // Build command: either run custom command via shell -c, or just start shell
+    let mut cmd = if let Some(ref command_str) = command {
+        let mut c = CommandBuilder::new(&shell_cmd);
+        c.arg("-c");
+        c.arg(command_str);
+        c
+    } else {
+        CommandBuilder::new(&shell_cmd)
+    };
     cmd.cwd(&cwd);
+
+    // Set proper TERM for xterm.js
+    cmd.env("TERM", "xterm-256color");
+    // Mark as lovcode terminal (similar to ITERM_SESSION_ID for iTerm)
+    cmd.env("LOVCODE_TERMINAL", "1");
 
     let _child = pair
         .slave
