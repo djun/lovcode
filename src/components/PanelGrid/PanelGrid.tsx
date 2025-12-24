@@ -87,7 +87,7 @@ export function PanelGrid({
                 <span className="text-xs text-muted-foreground truncate flex-1">
                   {panel.title || "Terminal"}
                 </span>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 flex-shrink-0">
                   {/* Toggle shared */}
                   <button
                     onClick={() => onPanelToggleShared(panel.id)}
@@ -178,7 +178,7 @@ export function SharedPanelZone({
             <span className="text-xs text-muted-foreground truncate flex-1">
               {panel.title || "Shared"}
             </span>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 flex-shrink-0">
               <button
                 onClick={() => onPanelToggleShared(panel.id)}
                 className="p-1 rounded text-primary hover:bg-card-alt transition-colors"
