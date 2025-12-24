@@ -4,8 +4,15 @@ import {
   Panel,
   Separator as PanelResizeHandle,
 } from "react-resizable-panels";
-import { Cross2Icon, PlusIcon, RowsIcon, ColumnsIcon, PinLeftIcon } from "@radix-ui/react-icons";
+import { Cross2Icon, PlusIcon, RowsIcon, ColumnsIcon, PinLeftIcon, DotsVerticalIcon } from "@radix-ui/react-icons";
 import { TerminalPane } from "../Terminal";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 
 export interface PanelState {
   id: string;
@@ -87,41 +94,37 @@ export function PanelGrid({
                 <span className="text-xs text-muted-foreground truncate flex-1">
                   {panel.title || "Terminal"}
                 </span>
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  {/* Toggle shared */}
-                  <button
-                    onClick={() => onPanelToggleShared(panel.id)}
-                    className={`p-1 rounded hover:bg-card-alt transition-colors ${
-                      panel.isShared ? "text-primary" : "text-muted-foreground"
-                    }`}
-                    title={panel.isShared ? "Unpin from shared" : "Pin to shared"}
-                  >
-                    <PinLeftIcon className="w-3.5 h-3.5" />
-                  </button>
-                  {/* Split horizontal */}
-                  <button
-                    onClick={() => onPanelAdd("horizontal")}
-                    className="p-1 rounded text-muted-foreground hover:text-ink hover:bg-card-alt transition-colors"
-                    title="Split horizontally"
-                  >
-                    <ColumnsIcon className="w-3.5 h-3.5" />
-                  </button>
-                  {/* Split vertical */}
-                  <button
-                    onClick={() => onPanelAdd("vertical")}
-                    className="p-1 rounded text-muted-foreground hover:text-ink hover:bg-card-alt transition-colors"
-                    title="Split vertically"
-                  >
-                    <RowsIcon className="w-3.5 h-3.5" />
-                  </button>
-                  {/* Close */}
-                  <button
-                    onClick={() => onPanelClose(panel.id)}
-                    className="p-1 rounded text-muted-foreground hover:text-red-500 hover:bg-card-alt transition-colors"
-                    title="Close terminal"
-                  >
-                    <Cross2Icon className="w-3.5 h-3.5" />
-                  </button>
+                <div className="flex items-center flex-shrink-0">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button className="p-1 rounded text-muted-foreground hover:text-ink hover:bg-card-alt transition-colors">
+                        <DotsVerticalIcon className="w-3.5 h-3.5" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => onPanelToggleShared(panel.id)}>
+                        <PinLeftIcon className="w-4 h-4 mr-2" />
+                        {panel.isShared ? "Unpin" : "Pin to shared"}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => onPanelAdd("horizontal")}>
+                        <ColumnsIcon className="w-4 h-4 mr-2" />
+                        Split horizontal
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => onPanelAdd("vertical")}>
+                        <RowsIcon className="w-4 h-4 mr-2" />
+                        Split vertical
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => onPanelClose(panel.id)}
+                        className="text-red-500 focus:text-red-500"
+                      >
+                        <Cross2Icon className="w-4 h-4 mr-2" />
+                        Close
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </div>
               {/* Terminal */}
@@ -178,21 +181,28 @@ export function SharedPanelZone({
             <span className="text-xs text-muted-foreground truncate flex-1">
               {panel.title || "Shared"}
             </span>
-            <div className="flex items-center gap-1 flex-shrink-0">
-              <button
-                onClick={() => onPanelToggleShared(panel.id)}
-                className="p-1 rounded text-primary hover:bg-card-alt transition-colors"
-                title="Unpin from shared"
-              >
-                <PinLeftIcon className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => onPanelClose(panel.id)}
-                className="p-1 rounded text-muted-foreground hover:text-red-500 hover:bg-card-alt transition-colors"
-                title="Close terminal"
-              >
-                <Cross2Icon className="w-3.5 h-3.5" />
-              </button>
+            <div className="flex items-center flex-shrink-0">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="p-1 rounded text-muted-foreground hover:text-ink hover:bg-card-alt transition-colors">
+                    <DotsVerticalIcon className="w-3.5 h-3.5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => onPanelToggleShared(panel.id)}>
+                    <PinLeftIcon className="w-4 h-4 mr-2" />
+                    Unpin
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => onPanelClose(panel.id)}
+                    className="text-red-500 focus:text-red-500"
+                  >
+                    <Cross2Icon className="w-4 h-4 mr-2" />
+                    Close
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
           {/* Terminal */}
