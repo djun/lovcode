@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import rehypeRaw from "rehype-raw";
 import { FileTextIcon } from "@radix-ui/react-icons";
 
 interface ProjectHomeViewProps {
@@ -60,7 +61,7 @@ export function ProjectHomeView({ projectPath, projectName }: ProjectHomeViewPro
   return (
     <div className="h-full overflow-auto p-6">
       <article className="prose prose-warm max-w-4xl mx-auto">
-        <Markdown remarkPlugins={[remarkGfm]}>{readme}</Markdown>
+        <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>{readme}</Markdown>
       </article>
     </div>
   );

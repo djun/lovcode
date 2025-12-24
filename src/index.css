@@ -263,3 +263,27 @@ input, button, a, select, textarea {
   padding-left: 0.5rem;
   padding-right: 0.5rem;
 }
+
+/* GitHub README HTML support in prose */
+.prose [align="center"],
+article.prose [align="center"] {
+  text-align: center !important;
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.prose [align="right"],
+article.prose [align="right"] {
+  text-align: right !important;
+}
+
+.prose [align="left"],
+article.prose [align="left"] {
+  text-align: left !important;
+}
+
+.prose img {
+  display: inline-block;
+  margin: 0 auto;
+}
