@@ -97,20 +97,20 @@ export function PanelGrid({
             />
           )}
           <Panel minSize={10} defaultSize={100 / panels.length}>
-            <div className="h-full flex flex-col bg-[#1a1a1a] border border-border rounded-lg overflow-hidden">
+            <div className="h-full flex flex-col bg-terminal border border-border rounded-lg overflow-hidden">
               {/* Panel header with session tabs */}
               <Tabs
                 value={panel.activeSessionId}
                 onValueChange={(sessionId) => onSessionSelect(panel.id, sessionId)}
                 className="flex flex-col h-full gap-0"
               >
-                <div className="flex items-center bg-card border-b border-border">
-                  <TabsList className="flex-1 h-8 bg-transparent p-0 rounded-none justify-start gap-0">
+                <div className="flex items-center bg-canvas-alt border-b border-border">
+                  <TabsList className="flex-1 h-8 !bg-transparent p-0 rounded-none justify-start gap-0">
                     {panel.sessions.map((session) => (
                       <TabsTrigger
                         key={session.id}
                         value={session.id}
-                        className="relative h-8 px-3 text-xs rounded-none border-r border-border data-[state=active]:bg-[#1a1a1a] data-[state=active]:shadow-none group"
+                        className="relative h-8 px-3 text-xs rounded-none border-r border-border data-[state=active]:bg-terminal data-[state=active]:shadow-none group"
                       >
                         <span className="truncate max-w-24">{session.title || "Terminal"}</span>
                         {panel.sessions.length > 1 && (
@@ -239,21 +239,21 @@ export function SharedPanelZone({
       {panels.map((panel) => (
         <div
           key={panel.id}
-          className="flex-1 min-h-0 flex flex-col bg-[#1a1a1a] border border-border rounded-lg overflow-hidden"
+          className="flex-1 min-h-0 flex flex-col bg-terminal border border-border rounded-lg overflow-hidden"
         >
           <Tabs
             value={panel.activeSessionId}
             onValueChange={(sessionId) => onSessionSelect(panel.id, sessionId)}
             className="flex flex-col h-full gap-0"
           >
-            <div className="flex items-center bg-card border-b border-border">
+            <div className="flex items-center bg-canvas-alt border-b border-border">
               <PinLeftIcon className="w-3.5 h-3.5 text-primary ml-2" />
-              <TabsList className="flex-1 h-8 bg-transparent p-0 rounded-none justify-start gap-0">
+              <TabsList className="flex-1 h-8 !bg-transparent p-0 rounded-none justify-start gap-0">
                 {panel.sessions.map((session) => (
                   <TabsTrigger
                     key={session.id}
                     value={session.id}
-                    className="relative h-8 px-3 text-xs rounded-none border-r border-border data-[state=active]:bg-[#1a1a1a] data-[state=active]:shadow-none group"
+                    className="relative h-8 px-3 text-xs rounded-none border-r border-border data-[state=active]:bg-terminal data-[state=active]:shadow-none group"
                   >
                     <span className="truncate max-w-24">{session.title || "Shared"}</span>
                     {panel.sessions.length > 1 && (

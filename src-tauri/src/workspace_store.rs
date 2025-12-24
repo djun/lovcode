@@ -32,15 +32,25 @@ impl Default for FeatureStatus {
     }
 }
 
-/// Panel state
+/// Session within a panel (a terminal tab)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PanelState {
+pub struct SessionState {
     pub id: String,
     pub pty_id: String,
     pub title: String,
+    pub command: Option<String>,
+}
+
+/// Panel state (container for multiple session tabs)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PanelState {
+    pub id: String,
+    #[serde(default)]
+    pub sessions: Vec<SessionState>,
+    #[serde(default)]
+    pub active_session_id: String,
     pub is_shared: bool,
     pub cwd: String,
-    pub command: Option<String>,
 }
 
 /// Feature within a project
@@ -49,9 +59,13 @@ pub struct Feature {
     pub id: String,
     pub name: String,
     pub status: FeatureStatus,
+    #[serde(default)]
+    pub archived: Option<bool>,
     pub git_branch: Option<String>,
     pub chat_session_id: Option<String>,
     pub panels: Vec<PanelState>,
+    #[serde(default)]
+    pub layout_direction: Option<String>,
     pub created_at: u64,
 }
 
@@ -61,7 +75,10 @@ pub struct WorkspaceProject {
     pub id: String,
     pub name: String,
     pub path: String,
+    #[serde(default)]
+    pub archived: Option<bool>,
     pub features: Vec<Feature>,
+    #[serde(default)]
     pub shared_panels: Vec<PanelState>,
     pub active_feature_id: Option<String>,
     pub created_at: u64,
@@ -124,6 +141,7 @@ pub fn add_project(path: String) -> Result<WorkspaceProject, String> {
         id: uuid::Uuid::new_v4().to_string(),
         name,
         path: path.clone(),
+        archived: None,
         features: Vec::new(),
         shared_panels: Vec::new(),
         active_feature_id: None,
@@ -195,9 +213,11 @@ pub fn create_feature(project_id: &str, name: String) -> Result<Feature, String>
         id: uuid::Uuid::new_v4().to_string(),
         name,
         status: FeatureStatus::Pending,
+        archived: None,
         git_branch: None,
         chat_session_id: None,
         panels: Vec::new(),
+        layout_direction: None,
         created_at: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs())

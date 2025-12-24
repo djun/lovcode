@@ -16,6 +16,9 @@
   --color-clay: #CC785C;
   --color-clay-hover: #B86A4E;
 
+  /* Terminal - warm dark background */
+  --color-terminal: #1a1a1a;
+
   /* Typography */
   --font-serif: Georgia, "Times New Roman", Times, serif;
   --font-sans: Inter, system-ui, -apple-system, sans-serif;
