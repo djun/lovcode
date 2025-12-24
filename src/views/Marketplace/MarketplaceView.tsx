@@ -89,13 +89,13 @@ export function MarketplaceView({ initialCategory, onSelectTemplate }: Marketpla
           <button
             key={sf.id}
             onClick={() => setSourceFilter(sf.id as SourceFilterId)}
+            title={sf.tooltip}
             className={`px-3 py-1.5 rounded-lg text-sm transition-colors flex items-center gap-1.5 ${
               sourceFilter === sf.id
                 ? "bg-primary text-primary-foreground"
                 : "bg-card border border-border text-muted-foreground hover:text-ink hover:border-primary/50"
             }`}
           >
-            <sf.icon className="w-4 h-4" />
             <span>{sf.label}</span>
             {sf.count > 0 && (
               <span

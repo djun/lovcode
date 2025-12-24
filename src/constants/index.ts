@@ -11,11 +11,8 @@ import {
   MixerHorizontalIcon,
   CubeIcon,
   ChatBubbleIcon,
-  GlobeIcon,
-  StarFilledIcon,
   TargetIcon,
   LayersIcon,
-  HeartFilledIcon,
   PersonIcon,
 } from "@radix-ui/react-icons";
 import type { FeatureType, FeatureConfig, TemplateCategory } from "../types";
@@ -139,10 +136,10 @@ export const FEATURES: FeatureConfig[] = [
 // ============================================================================
 
 export const SOURCE_FILTERS = [
-  { id: "all", label: "All", icon: GlobeIcon },
-  { id: "anthropic", label: "Official", icon: StarFilledIcon },
-  { id: "lovstudio", label: "Personal", icon: HeartFilledIcon },
-  { id: "community", label: "Community", icon: GlobeIcon },
+  { id: "all", label: "All", tooltip: "All sources" },
+  { id: "anthropic", label: "Anthropic", tooltip: "github.com/anthropics/claude-plugins-official" },
+  { id: "lovstudio", label: "Lovstudio", tooltip: "github.com/markshawn2020/lovstudio-plugins-official" },
+  { id: "community", label: "CCT", tooltip: "github.com/davila7/claude-code-templates" },
 ] as const;
 
 export type SourceFilterId = (typeof SOURCE_FILTERS)[number]["id"];
