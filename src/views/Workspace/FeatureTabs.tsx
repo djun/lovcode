@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type React from "react";
-import { PlusIcon, CheckCircledIcon, UpdateIcon, ExclamationTriangleIcon, TimerIcon, CheckIcon, Cross2Icon, DrawingPinIcon, DrawingPinFilledIcon } from "@radix-ui/react-icons";
+import { PlusIcon, CheckCircledIcon, UpdateIcon, ExclamationTriangleIcon, TimerIcon, Cross2Icon, DrawingPinIcon, DrawingPinFilledIcon, Pencil1Icon } from "@radix-ui/react-icons";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -21,16 +21,14 @@ interface FeatureTabsProps {
   features: Feature[];
   activeFeatureId?: string;
   onSelectFeature: (id: string) => void;
-  onAddFeature: () => void;
+  onAddFeature: (name: string) => void;
+  onRenameFeature: (id: string, name: string) => void;
   onUpdateFeatureStatus: (id: string, status: FeatureStatus, note?: string) => void;
   onArchiveFeature: (id: string, note?: string) => void;
   onPinFeature: (id: string, pinned: boolean) => void;
-  isAddingFeature?: boolean;
-  newFeatureName?: string;
-  onNewFeatureNameChange?: (name: string) => void;
-  onConfirmAddFeature?: () => void;
-  onCancelAddFeature?: () => void;
 }
+
+type NameDialogState = { type: "add" } | { type: "rename"; featureId: string; currentName: string } | null;
 
 const STATUS_OPTIONS: { value: FeatureStatus; label: string; icon: React.ReactNode }[] = [
   { value: "pending", label: "Pending", icon: <TimerIcon className="w-3.5 h-3.5 text-muted-foreground" /> },
@@ -46,17 +44,15 @@ export function FeatureTabs({
   activeFeatureId,
   onSelectFeature,
   onAddFeature,
+  onRenameFeature,
   onUpdateFeatureStatus,
   onArchiveFeature,
   onPinFeature,
-  isAddingFeature,
-  newFeatureName,
-  onNewFeatureNameChange,
-  onConfirmAddFeature,
-  onCancelAddFeature,
 }: FeatureTabsProps) {
   const [archiveAction, setArchiveAction] = useState<ArchiveAction | null>(null);
   const [archiveNote, setArchiveNote] = useState("");
+  const [nameDialog, setNameDialog] = useState<NameDialogState>(null);
+  const [featureName, setFeatureName] = useState("");
 
   const activeFeatures = features
     .filter((f) => !f.archived)
@@ -78,6 +74,33 @@ export function FeatureTabs({
   const handleCancelDialog = () => {
     setArchiveAction(null);
     setArchiveNote("");
+  };
+
+  const handleOpenAddDialog = () => {
+    setNameDialog({ type: "add" });
+    setFeatureName("");
+  };
+
+  const handleOpenRenameDialog = (featureId: string, currentName: string) => {
+    setNameDialog({ type: "rename", featureId, currentName });
+    setFeatureName(currentName);
+  };
+
+  const handleConfirmName = () => {
+    const name = featureName.trim();
+    if (!name || !nameDialog) return;
+    if (nameDialog.type === "add") {
+      onAddFeature(name);
+    } else {
+      onRenameFeature(nameDialog.featureId, name);
+    }
+    setNameDialog(null);
+    setFeatureName("");
+  };
+
+  const handleCancelNameDialog = () => {
+    setNameDialog(null);
+    setFeatureName("");
   };
 
   return (
@@ -102,6 +125,13 @@ export function FeatureTabs({
                 </div>
               </ContextMenuTrigger>
               <ContextMenuContent className="min-w-[160px]">
+                <ContextMenuItem
+                  onClick={() => handleOpenRenameDialog(feature.id, feature.name)}
+                  className="gap-2 cursor-pointer"
+                >
+                  <Pencil1Icon className="w-3.5 h-3.5" />
+                  <span>Rename</span>
+                </ContextMenuItem>
                 <ContextMenuItem
                   onClick={() => onPinFeature(feature.id, !feature.pinned)}
                   className="gap-2 cursor-pointer"
@@ -142,44 +172,13 @@ export function FeatureTabs({
             </ContextMenu>
           );
         })}
-        {isAddingFeature ? (
-          <div className="flex items-center gap-1 shrink-0">
-            <input
-              type="text"
-              value={newFeatureName || ""}
-              onChange={(e) => onNewFeatureNameChange?.(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") onConfirmAddFeature?.();
-                if (e.key === "Escape") onCancelAddFeature?.();
-              }}
-              placeholder="Feature name"
-              className="w-32 px-2 py-1 text-sm border border-border rounded bg-card text-ink focus:outline-none focus:ring-1 focus:ring-primary"
-              autoFocus
-            />
-            <button
-              onClick={onConfirmAddFeature}
-              className="p-1.5 text-primary hover:bg-primary/10 rounded transition-colors"
-              title="Confirm"
-            >
-              <CheckIcon className="w-4 h-4" />
-            </button>
-            <button
-              onClick={onCancelAddFeature}
-              className="p-1.5 text-muted-foreground hover:text-ink hover:bg-card-alt rounded transition-colors"
-              title="Cancel"
-            >
-              <Cross2Icon className="w-4 h-4" />
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={onAddFeature}
-            className="flex items-center gap-1 px-2 py-1.5 text-sm text-muted-foreground hover:text-ink hover:bg-card-alt rounded-lg transition-colors shrink-0"
-            title="New feature"
-          >
-            <PlusIcon className="w-4 h-4" />
-          </button>
-        )}
+        <button
+          onClick={handleOpenAddDialog}
+          className="flex items-center gap-1 px-2 py-1.5 text-sm text-muted-foreground hover:text-ink hover:bg-card-alt rounded-lg transition-colors shrink-0"
+          title="New feature"
+        >
+          <PlusIcon className="w-4 h-4" />
+        </button>
       </div>
 
       {/* Archive confirmation dialog */}
@@ -209,6 +208,44 @@ export function FeatureTabs({
               className="px-4 py-2 text-sm bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg transition-colors"
             >
               {archiveAction?.type === "complete" ? "Complete" : "Cancel"} Feature
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Name dialog for add/rename */}
+      <Dialog open={nameDialog !== null} onOpenChange={(open) => !open && handleCancelNameDialog()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {nameDialog?.type === "add" ? "New Feature" : "Rename Feature"}
+            </DialogTitle>
+          </DialogHeader>
+          <input
+            type="text"
+            value={featureName}
+            onChange={(e) => setFeatureName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleConfirmName();
+              if (e.key === "Escape") handleCancelNameDialog();
+            }}
+            placeholder="Feature name"
+            className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-card text-ink focus:outline-none focus:ring-1 focus:ring-primary"
+            autoFocus
+          />
+          <DialogFooter>
+            <button
+              onClick={handleCancelNameDialog}
+              className="px-4 py-2 text-sm text-muted-foreground hover:text-ink hover:bg-card-alt rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirmName}
+              disabled={!featureName.trim()}
+              className="px-4 py-2 text-sm bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg transition-colors disabled:opacity-50"
+            >
+              {nameDialog?.type === "add" ? "Create" : "Rename"}
             </button>
           </DialogFooter>
         </DialogContent>

@@ -1,9 +1,6 @@
-import { useCallback } from "react";
-import {
-  Group as PanelGroup,
-  Panel,
-  Separator as PanelResizeHandle,
-} from "react-resizable-panels";
+import { useCallback, useEffect } from "react";
+import { Allotment } from "allotment";
+import "allotment/dist/style.css";
 import { Cross2Icon, PlusIcon, RowsIcon, ColumnsIcon, PinLeftIcon, DotsVerticalIcon, ReloadIcon } from "@radix-ui/react-icons";
 import { TerminalPane } from "../Terminal";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../ui/tabs";
@@ -41,7 +38,6 @@ export interface PanelGridProps {
   onSessionSelect: (panelId: string, sessionId: string) => void;
   onSessionTitleChange: (panelId: string, sessionId: string, title: string) => void;
   direction?: "horizontal" | "vertical";
-  autoSaveId?: string;
 }
 
 export function PanelGrid({
@@ -55,7 +51,6 @@ export function PanelGrid({
   onSessionSelect,
   onSessionTitleChange,
   direction = "horizontal",
-  autoSaveId,
 }: PanelGridProps) {
   const handleTitleChange = useCallback(
     (panelId: string, sessionId: string) => (title: string) => {
@@ -64,40 +59,25 @@ export function PanelGrid({
     [onSessionTitleChange]
   );
 
+  // Auto-create terminal when empty
+  useEffect(() => {
+    if (panels.length === 0) {
+      onPanelAdd("horizontal");
+    }
+  }, [panels.length, onPanelAdd]);
+
   if (panels.length === 0) {
-    return (
-      <div className="h-full flex items-center justify-center bg-canvas">
-        <div className="text-center">
-          <p className="text-muted-foreground mb-4">No terminals open</p>
-          <button
-            onClick={() => onPanelAdd("horizontal")}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
-          >
-            <PlusIcon className="w-4 h-4" />
-            New Terminal
-          </button>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   return (
-    <PanelGroup
-      orientation={direction}
-      id={autoSaveId}
+    <Allotment
+      vertical={direction === "vertical"}
       className="h-full"
     >
-      {panels.map((panel, index) => (
-        <div key={panel.id} className="contents">
-          {index > 0 && (
-            <PanelResizeHandle
-              className={`${
-                direction === "horizontal" ? "w-1" : "h-1"
-              } bg-border hover:bg-primary/50 transition-colors`}
-            />
-          )}
-          <Panel minSize={10} defaultSize={100 / panels.length}>
-            <div className="h-full flex flex-col bg-terminal border border-border rounded-lg overflow-hidden">
+      {panels.map((panel) => (
+        <Allotment.Pane key={panel.id} minSize={150}>
+          <div className="h-full flex flex-col bg-terminal border border-border rounded-lg overflow-hidden">
               {/* Panel header with session tabs */}
               <Tabs
                 value={panel.activeSessionId}
@@ -194,10 +174,9 @@ export function PanelGrid({
                 </div>
               </Tabs>
             </div>
-          </Panel>
-        </div>
+        </Allotment.Pane>
       ))}
-    </PanelGroup>
+    </Allotment>
   );
 }
 
@@ -235,7 +214,7 @@ export function SharedPanelZone({
   }
 
   return (
-    <div className="h-full min-w-[280px] flex flex-col gap-1 p-1">
+    <div className="h-full w-full min-w-0 flex flex-col gap-1 p-1 overflow-hidden">
       {panels.map((panel) => (
         <div
           key={panel.id}

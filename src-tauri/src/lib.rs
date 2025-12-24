@@ -3990,6 +3990,11 @@ fn workspace_create_feature(project_id: String, name: String) -> Result<workspac
 }
 
 #[tauri::command]
+fn workspace_rename_feature(feature_id: String, name: String) -> Result<(), String> {
+    workspace_store::rename_feature(&feature_id, name)
+}
+
+#[tauri::command]
 fn workspace_update_feature_status(
     project_id: String,
     feature_id: String,
@@ -4328,6 +4333,7 @@ pub fn run() {
             workspace_remove_project,
             workspace_set_active_project,
             workspace_create_feature,
+            workspace_rename_feature,
             workspace_update_feature_status,
             workspace_delete_feature,
             workspace_set_active_feature,

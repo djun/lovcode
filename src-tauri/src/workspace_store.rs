@@ -241,6 +241,21 @@ pub fn create_feature(project_id: &str, name: String) -> Result<Feature, String>
     Ok(feature)
 }
 
+/// Rename a feature
+pub fn rename_feature(feature_id: &str, name: String) -> Result<(), String> {
+    let mut data = load_workspace()?;
+
+    for project in &mut data.projects {
+        if let Some(feature) = project.features.iter_mut().find(|f| f.id == feature_id) {
+            feature.name = name;
+            save_workspace(&data)?;
+            return Ok(());
+        }
+    }
+
+    Err(format!("Feature '{}' not found", feature_id))
+}
+
 /// Update a feature's status
 pub fn update_feature_status(project_id: &str, feature_id: &str, status: FeatureStatus) -> Result<(), String> {
     let mut data = load_workspace()?;
