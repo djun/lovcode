@@ -6,6 +6,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { ProjectSidebar } from "./ProjectSidebar";
 import { FeatureSidebar } from "./FeatureSidebar";
 import { ProjectHomeView } from "./ProjectHomeView";
+import { ProjectDashboard } from "./ProjectDashboard";
 import { PanelGrid } from "../../components/PanelGrid";
 import { FileViewer } from "../../components/FileViewer";
 import type { PanelState } from "../../components/PanelGrid";
@@ -343,12 +344,12 @@ export function WorkspaceView() {
     [workspace, saveWorkspace]
   );
 
-  // Open project home (README view)
-  const handleOpenProjectHome = useCallback(
+  // Open project dashboard
+  const handleOpenDashboard = useCallback(
     (projectId: string) => {
       if (!workspace) return;
       const newProjects = workspace.projects.map((p) =>
-        p.id === projectId ? { ...p, view_mode: "home" as const } : p
+        p.id === projectId ? { ...p, view_mode: "dashboard" as const } : p
       );
       saveWorkspace({
         ...workspace,
@@ -357,6 +358,46 @@ export function WorkspaceView() {
       });
     },
     [workspace, saveWorkspace]
+  );
+
+  // Update feature status from dashboard (no auto-archive)
+  const handleDashboardFeatureStatusChange = useCallback(
+    (featureId: string, status: FeatureStatus) => {
+      if (!activeProject || !workspace) return;
+
+      const newProjects = workspace.projects.map((p) => {
+        if (p.id !== activeProject.id) return p;
+        return {
+          ...p,
+          features: p.features.map((f) =>
+            f.id === featureId ? { ...f, status } : f
+          ),
+        };
+      });
+      saveWorkspace({
+        ...workspace,
+        projects: newProjects,
+      });
+    },
+    [activeProject, workspace, saveWorkspace]
+  );
+
+  // Select feature from dashboard and switch to features view
+  const handleDashboardFeatureClick = useCallback(
+    (featureId: string) => {
+      if (!activeProject || !workspace) return;
+
+      const newProjects = workspace.projects.map((p) =>
+        p.id === activeProject.id
+          ? { ...p, active_feature_id: featureId, view_mode: "features" as const }
+          : p
+      );
+      saveWorkspace({
+        ...workspace,
+        projects: newProjects,
+      });
+    },
+    [activeProject, workspace, saveWorkspace]
   );
 
   // Open feature panel (select project and its first feature)
@@ -1100,13 +1141,26 @@ export function WorkspaceView() {
           onArchiveProject={handleArchiveProject}
           onUnarchiveProject={handleUnarchiveProject}
           onUnarchiveFeature={handleUnarchiveFeature}
-          onOpenProjectHome={handleOpenProjectHome}
+          onOpenDashboard={handleOpenDashboard}
           onOpenFeaturePanel={handleOpenFeaturePanel}
+          onRenameFeature={(projectId, featureId, name) => {
+            const project = workspace?.projects.find(p => p.id === projectId);
+            if (project) handleRenameFeature(featureId, name);
+          }}
         />
 
         {/* Main content area */}
         <div className="flex-1 flex min-w-0">
           {activeProject ? (
+            activeProject.view_mode === "dashboard" ? (
+              /* Dashboard view - full width without FeatureSidebar */
+              <ProjectDashboard
+                project={activeProject}
+                onFeatureClick={handleDashboardFeatureClick}
+                onFeatureStatusChange={handleDashboardFeatureStatusChange}
+                onAddFeature={() => handleAddFeature(activeProject.id)}
+              />
+            ) : (
             <>
               {/* Feature sidebar with pinned sessions */}
               <FeatureSidebar
@@ -1127,6 +1181,7 @@ export function WorkspaceView() {
                 activePanelId={activePanelId}
                 onPanelFocus={setActivePanelId}
                 onFileClick={setSelectedFile}
+                onFeatureRename={activeFeature ? (name) => handleRenameFeature(activeFeature.id, name) : undefined}
               />
 
               {/* Main content area */}
@@ -1192,6 +1247,7 @@ export function WorkspaceView() {
                 )}
               </div>
             </>
+            )
           ) : (
             <div className="h-full flex items-center justify-center">
               <div className="text-center">

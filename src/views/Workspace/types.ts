@@ -44,7 +44,7 @@ export interface Feature {
 }
 
 /** Project view mode */
-export type ProjectViewMode = "features" | "home";
+export type ProjectViewMode = "features" | "home" | "dashboard";
 
 /** Project in the workspace */
 export interface WorkspaceProject {

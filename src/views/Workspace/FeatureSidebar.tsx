@@ -34,6 +34,8 @@ interface FeatureSidebarProps {
   onPanelFocus?: (id: string) => void;
   // File actions
   onFileClick?: (path: string) => void;
+  // Feature rename
+  onFeatureRename?: (name: string) => void;
 }
 
 export function FeatureSidebar({
@@ -54,15 +56,19 @@ export function FeatureSidebar({
   activePanelId,
   onPanelFocus,
   onFileClick,
+  onFeatureRename,
 }: FeatureSidebarProps) {
   const [expandedPanels, setExpandedPanels] = useState<Set<string>>(() => new Set(pinnedPanels.map(p => p.id)));
   const [pinnedExpanded, setPinnedExpanded] = useState(true);
   const [filesExpanded, setFilesExpanded] = useState(false);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
   const [width, setWidth] = useState(() => {
     const saved = localStorage.getItem("feature-sidebar-width");
     return saved ? Number(saved) : 256;
   });
   const sidebarRef = useRef<HTMLDivElement>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
 
   // Persist width
   useEffect(() => {
@@ -120,6 +126,29 @@ export function FeatureSidebar({
 
   const title = featureName ? `${projectName} - ${featureName}` : projectName;
 
+  const handleStartRename = useCallback(() => {
+    if (!featureName || !onFeatureRename) return;
+    setRenameValue(featureName);
+    setIsRenaming(true);
+    setTimeout(() => renameInputRef.current?.select(), 0);
+  }, [featureName, onFeatureRename]);
+
+  const handleRenameSubmit = useCallback(() => {
+    const trimmed = renameValue.trim();
+    if (trimmed && trimmed !== featureName) {
+      onFeatureRename?.(trimmed);
+    }
+    setIsRenaming(false);
+  }, [renameValue, featureName, onFeatureRename]);
+
+  const handleRenameKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      handleRenameSubmit();
+    } else if (e.key === "Escape") {
+      setIsRenaming(false);
+    }
+  }, [handleRenameSubmit]);
+
   // Collapsed state
   if (collapsed) {
     return (
@@ -172,7 +201,27 @@ export function FeatureSidebar({
           >
             <ChevronLeftIcon className="w-4 h-4" />
           </button>
-          <span className="flex-1 text-sm font-medium text-ink px-1 truncate">{title}</span>
+          {isRenaming ? (
+            <span className="flex-1 flex items-center text-sm font-medium text-ink px-1 min-w-0">
+              <span className="shrink-0">{projectName} - </span>
+              <input
+                ref={renameInputRef}
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onBlur={handleRenameSubmit}
+                onKeyDown={handleRenameKeyDown}
+                className="flex-1 bg-card border border-border rounded outline-none focus:border-primary min-w-0 px-1"
+              />
+            </span>
+          ) : (
+            <span
+              className="flex-1 text-sm font-medium text-ink px-1 truncate"
+              onDoubleClick={handleStartRename}
+              title={featureName && onFeatureRename ? "Double-click to rename" : undefined}
+            >
+              {title}
+            </span>
+          )}
         </div>
 
         {/* Sections container */}

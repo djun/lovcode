@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { PlusIcon, CheckCircledIcon, UpdateIcon, ExclamationTriangleIcon, TimerIcon, ArchiveIcon, HomeIcon, DashboardIcon, CubeIcon, ChevronRightIcon, ChevronDownIcon, DrawingPinFilledIcon } from "@radix-ui/react-icons";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { PlusIcon, CheckCircledIcon, UpdateIcon, ExclamationTriangleIcon, TimerIcon, ArchiveIcon, DashboardIcon, ChevronRightIcon, ChevronDownIcon, DrawingPinFilledIcon } from "@radix-ui/react-icons";
+import { ProjectLogo } from "./ProjectLogo";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -20,28 +20,6 @@ import {
 } from "../../components/ui/dropdown-menu";
 import type { WorkspaceProject, FeatureStatus } from "./types";
 
-function ProjectLogo({ projectPath }: { projectPath: string }) {
-  const [logoSrc, setLogoSrc] = useState<string | null>(null);
-
-  useEffect(() => {
-    invoke<string | null>("get_project_logo", { projectPath })
-      .then(setLogoSrc)
-      .catch(() => setLogoSrc(null));
-  }, [projectPath]);
-
-  if (!logoSrc) {
-    return <CubeIcon className="w-4 h-4 text-muted-foreground flex-shrink-0" />;
-  }
-
-  return (
-    <img
-      src={logoSrc}
-      alt="Project logo"
-      className="w-5 h-5 rounded object-contain flex-shrink-0"
-    />
-  );
-}
-
 interface ProjectSidebarProps {
   projects: WorkspaceProject[];
   activeProjectId?: string;
@@ -52,8 +30,9 @@ interface ProjectSidebarProps {
   onArchiveProject: (id: string) => void;
   onUnarchiveProject: (id: string) => void;
   onUnarchiveFeature: (projectId: string, featureId: string) => void;
-  onOpenProjectHome: (id: string) => void;
+  onOpenDashboard: (id: string) => void;
   onOpenFeaturePanel: (id: string) => void;
+  onRenameFeature?: (projectId: string, featureId: string, name: string) => void;
 }
 
 export function ProjectSidebar({
@@ -66,12 +45,16 @@ export function ProjectSidebar({
   onArchiveProject,
   onUnarchiveProject,
   onUnarchiveFeature,
-  onOpenProjectHome,
+  onOpenDashboard,
   onOpenFeaturePanel,
+  onRenameFeature,
 }: ProjectSidebarProps) {
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() =>
     new Set(activeProjectId ? [activeProjectId] : [])
   );
+  const [renamingFeatureId, setRenamingFeatureId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const renameInputRef = useRef<HTMLInputElement>(null);
 
   // Auto-expand active project
   useEffect(() => {
@@ -91,6 +74,29 @@ export function ProjectSidebar({
       return next;
     });
   };
+
+  const handleStartRename = useCallback((featureId: string, currentName: string) => {
+    if (!onRenameFeature) return;
+    setRenameValue(currentName);
+    setRenamingFeatureId(featureId);
+    setTimeout(() => renameInputRef.current?.select(), 0);
+  }, [onRenameFeature]);
+
+  const handleRenameSubmit = useCallback((projectId: string, featureId: string, originalName: string) => {
+    const trimmed = renameValue.trim();
+    if (trimmed && trimmed !== originalName) {
+      onRenameFeature?.(projectId, featureId, trimmed);
+    }
+    setRenamingFeatureId(null);
+  }, [renameValue, onRenameFeature]);
+
+  const handleRenameKeyDown = useCallback((e: React.KeyboardEvent, projectId: string, featureId: string, originalName: string) => {
+    if (e.key === "Enter") {
+      handleRenameSubmit(projectId, featureId, originalName);
+    } else if (e.key === "Escape") {
+      setRenamingFeatureId(null);
+    }
+  }, [handleRenameSubmit]);
 
   const activeProjects = projects.filter((p) => !p.archived);
   const archivedProjects = projects.filter((p) => p.archived);
@@ -114,7 +120,7 @@ export function ProjectSidebar({
                       className={`group mx-2 px-2 py-1.5 rounded-lg cursor-pointer transition-colors ${
                         isActive ? "bg-primary/10" : "hover:bg-card-alt"
                       }`}
-                      onClick={() => hasFeatures && toggleProjectExpanded(project.id)}
+                      onClick={() => onOpenDashboard(project.id)}
                     >
                       <div className="flex items-center gap-1.5">
                         <ProjectLogo projectPath={project.path} />
@@ -125,7 +131,13 @@ export function ProjectSidebar({
                         >
                           {project.name.split(/[-_]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
                         </span>
-                        <span className={`p-0.5 ${hasFeatures ? "text-muted-foreground" : "text-muted-foreground/30"}`}>
+                        <span
+                          className={`p-0.5 rounded hover:bg-muted ${hasFeatures ? "text-muted-foreground" : "text-muted-foreground/30"}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (hasFeatures) toggleProjectExpanded(project.id);
+                          }}
+                        >
                           {isExpanded && hasFeatures ? (
                             <ChevronDownIcon className="w-3.5 h-3.5" />
                           ) : (
@@ -176,11 +188,11 @@ export function ProjectSidebar({
                     {/* Project Management */}
                     <ContextMenuLabel>Project</ContextMenuLabel>
                     <ContextMenuItem
-                      onClick={() => onOpenProjectHome(project.id)}
+                      onClick={() => onOpenDashboard(project.id)}
                       className="gap-2 cursor-pointer"
                     >
-                      <HomeIcon className="w-3.5 h-3.5" />
-                      <span>Project Home</span>
+                      <DashboardIcon className="w-3.5 h-3.5" />
+                      <span>Dashboard</span>
                     </ContextMenuItem>
                     <ContextMenuItem
                       onClick={() => onArchiveProject(project.id)}
@@ -211,7 +223,28 @@ export function ProjectSidebar({
                             {feature.pinned && <DrawingPinFilledIcon className="w-3 h-3 text-primary/70 flex-shrink-0" />}
                             <StatusIcon status={feature.status} />
                             {feature.seq > 0 && <span className="text-xs text-muted-foreground/60">#{feature.seq}</span>}
-                            <span className="text-sm truncate">{feature.name}</span>
+                            {renamingFeatureId === feature.id ? (
+                              <input
+                                ref={renameInputRef}
+                                value={renameValue}
+                                onChange={(e) => setRenameValue(e.target.value)}
+                                onBlur={() => handleRenameSubmit(project.id, feature.id, feature.name)}
+                                onKeyDown={(e) => handleRenameKeyDown(e, project.id, feature.id, feature.name)}
+                                onClick={(e) => e.stopPropagation()}
+                                className="flex-1 text-sm bg-card border border-border rounded outline-none focus:border-primary min-w-0 px-1"
+                              />
+                            ) : (
+                              <span
+                                className="text-sm truncate"
+                                onDoubleClick={(e) => {
+                                  e.stopPropagation();
+                                  handleStartRename(feature.id, feature.name);
+                                }}
+                                title={onRenameFeature ? "Double-click to rename" : undefined}
+                              >
+                                {feature.name}
+                              </span>
+                            )}
                           </div>
                         );
                       })}
