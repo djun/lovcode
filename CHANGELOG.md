@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.1
+
+### Patch Changes
+
+- refactor: 模块化 Settings 和 Chat 视图，优化 Marketplace source filter
+
 ## 0.12.0
 
 ### Minor Changes
