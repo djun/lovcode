@@ -70,22 +70,24 @@ export function ActivityHeatmap({ daily, detailed }: ActivityHeatmapProps) {
     return { weeks, maxCount, totalSessions, monthLabels };
   }, [dailyMap]);
 
-  // Hour mode data (横轴日期，纵轴0-23小时)
+  // Hour mode data (横轴日期，纵轴6个时段，每4小时一组)
   const hourData = useMemo(() => {
     const today = new Date();
     const daysToShow = 90; // 3 months for hour view
-    const days: { date: string; hours: number[] }[] = [];
+    const days: { date: string; periods: number[] }[] = [];
 
     for (let i = daysToShow - 1; i >= 0; i--) {
       const d = new Date(today);
       d.setDate(d.getDate() - i);
       const dateStr = d.toISOString().split("T")[0];
-      const hours: number[] = [];
+      // 6 periods: 0-3, 4-7, 8-11, 12-15, 16-19, 20-23
+      const periods: number[] = [0, 0, 0, 0, 0, 0];
       for (let h = 0; h < 24; h++) {
         const key = `${dateStr}:${h.toString().padStart(2, "0")}`;
-        hours.push(detailedMap.get(key) || 0);
+        const count = detailedMap.get(key) || 0;
+        periods[Math.floor(h / 4)] += count;
       }
-      days.push({ date: dateStr, hours });
+      days.push({ date: dateStr, periods });
     }
 
     // Month labels for hour view
@@ -100,7 +102,7 @@ export function ActivityHeatmap({ daily, detailed }: ActivityHeatmapProps) {
       }
     });
 
-    const allCounts = days.flatMap((d) => d.hours);
+    const allCounts = days.flatMap((d) => d.periods);
     const maxCount = Math.max(...allCounts, 1);
     const totalSessions = allCounts.reduce((sum, c) => sum + c, 0);
 
@@ -116,17 +118,20 @@ export function ActivityHeatmap({ daily, detailed }: ActivityHeatmapProps) {
 
   const getColorClass = (count: number, maxCount: number): string => {
     if (count === 0) return "bg-muted/30";
-    const ratio = count / maxCount;
-    if (ratio < 0.25) return "bg-primary/20";
-    if (ratio < 0.5) return "bg-primary/40";
-    if (ratio < 0.75) return "bg-primary/70";
+    // Use logarithmic scale for better distribution
+    const logCount = Math.log(count + 1);
+    const logMax = Math.log(maxCount + 1);
+    const ratio = logCount / logMax;
+    if (ratio < 0.4) return "bg-primary/25";
+    if (ratio < 0.6) return "bg-primary/45";
+    if (ratio < 0.8) return "bg-primary/70";
     return "bg-primary";
   };
 
   const cellSize = 11;
   const cellGap = 3;
   const weekLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const hourLabels = ["0", "3", "6", "9", "12", "15", "18", "21"];
+  const periodLabels = ["0h", "4h", "8h", "12h", "16h", "20h"];
 
   const totalSessions = mode === "weekday" ? weekdayData.totalSessions : hourData.totalSessions;
 
@@ -168,18 +173,22 @@ export function ActivityHeatmap({ daily, detailed }: ActivityHeatmapProps) {
 
       <div className="flex gap-1">
         {/* Y-axis labels */}
-        <div className="flex flex-col gap-[3px] text-[10px] text-muted-foreground/70 pr-1 pt-4">
-          {mode === "weekday"
-            ? weekLabels.map((label, i) => (
-                <div key={i} className="h-[11px] flex items-center">
-                  {i % 2 === 1 ? label : ""}
-                </div>
-              ))
-            : Array.from({ length: 24 }, (_, i) => (
-                <div key={i} className="h-[11px] flex items-center justify-end pr-1">
-                  {hourLabels.includes(i.toString()) ? `${i}h` : ""}
-                </div>
-              ))}
+        <div className="flex flex-col text-[10px] text-muted-foreground/70 pr-1">
+          {/* Spacer for month labels (h-4 + mb-1 = 20px) */}
+          <div className="h-5" />
+          <div className="flex flex-col" style={{ gap: `${cellGap}px` }}>
+            {mode === "weekday"
+              ? weekLabels.map((label, i) => (
+                  <div key={i} className="flex items-center justify-end" style={{ height: `${cellSize}px` }}>
+                    {i % 2 === 1 ? label : ""}
+                  </div>
+                ))
+              : periodLabels.map((label, i) => (
+                  <div key={i} className="flex items-center justify-end" style={{ height: `${cellSize}px` }}>
+                    {i % 2 === 0 ? label : ""}
+                  </div>
+                ))}
+          </div>
         </div>
 
         {/* Scrollable heatmap */}
@@ -239,16 +248,16 @@ export function ActivityHeatmap({ daily, detailed }: ActivityHeatmapProps) {
                   );
                 })}
               </div>
-              {/* Grid: each column is a day, each row is an hour */}
+              {/* Grid: each column is a day, each row is a 4-hour period */}
               <div className="flex" style={{ gap: `${cellGap}px` }}>
                 {hourData.days.map((day, dayIdx) => (
                   <div key={dayIdx} className="flex flex-col" style={{ gap: `${cellGap}px` }}>
-                    {day.hours.map((count, hourIdx) => (
+                    {day.periods.map((count, periodIdx) => (
                       <div
-                        key={hourIdx}
+                        key={periodIdx}
                         className={`rounded-sm cursor-default ${getColorClass(count, hourData.maxCount)}`}
                         style={{ width: `${cellSize}px`, height: `${cellSize}px` }}
-                        title={`${day.date} ${hourIdx}:00 - ${count} chats`}
+                        title={`${day.date} ${periodLabels[periodIdx]} - ${count} chats`}
                       />
                     ))}
                   </div>
