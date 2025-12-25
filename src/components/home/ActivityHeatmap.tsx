@@ -1,12 +1,12 @@
 import { useMemo } from "react";
 
 interface ActivityHeatmapProps {
-  /** Map of date string (YYYY-MM-DD) to message count */
+  /** Map of date string (YYYY-MM-DD) to session count */
   data: Map<string, number>;
 }
 
 export function ActivityHeatmap({ data }: ActivityHeatmapProps) {
-  const { weeks, maxCount, totalMessages } = useMemo(() => {
+  const { weeks, maxCount, totalSessions } = useMemo(() => {
     const today = new Date();
     const cells: { date: string; count: number; dayOfWeek: number }[] = [];
 
@@ -58,9 +58,9 @@ export function ActivityHeatmap({ data }: ActivityHeatmapProps) {
     }
 
     const maxCount = Math.max(...cells.map((c) => c.count), 1);
-    const totalMessages = cells.reduce((sum, c) => sum + c.count, 0);
+    const totalSessions = cells.reduce((sum, c) => sum + c.count, 0);
 
-    return { cells, weeks, maxCount, totalMessages };
+    return { weeks, maxCount, totalSessions };
   }, [data]);
 
   const getColorClass = (count: number): string => {
@@ -81,7 +81,7 @@ export function ActivityHeatmap({ data }: ActivityHeatmapProps) {
           Activity
         </span>
         <span className="text-xs text-muted-foreground">
-          {totalMessages.toLocaleString()} messages
+          {totalSessions.toLocaleString()} chats
         </span>
       </div>
 
@@ -105,7 +105,7 @@ export function ActivityHeatmap({ data }: ActivityHeatmapProps) {
                   className={`w-[11px] h-[11px] rounded-sm ${
                     cell.date ? getColorClass(cell.count) : "bg-transparent"
                   }`}
-                  title={cell.date ? `${cell.date}: ${cell.count} messages` : ""}
+                  title={cell.date ? `${cell.date}: ${cell.count} chats` : ""}
                 />
               ))}
             </div>

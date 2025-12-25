@@ -37,19 +37,6 @@ export function Home({ onFeatureClick, onProjectClick, onSessionClick, onSearch 
     });
   }, []);
 
-  // Compute activity heatmap data from sessions
-  const activityData = useMemo(() => {
-    const map = new Map<string, number>();
-    if (!data) return map;
-
-    data.sessions.forEach((session) => {
-      const date = new Date(session.last_modified * 1000);
-      const dateStr = date.toISOString().split("T")[0];
-      map.set(dateStr, (map.get(dateStr) || 0) + session.message_count);
-    });
-
-    return map;
-  }, [data]);
 
   // Get last active project
   const lastProject = useMemo(() => {
@@ -96,7 +83,7 @@ export function Home({ onFeatureClick, onProjectClick, onSessionClick, onSearch 
         {/* Activity Heatmap + Stats */}
         {data && (
           <div className="bg-card/50 rounded-2xl p-5 border border-border/40">
-            <ActivityHeatmap data={activityData} />
+            <ActivityHeatmap data={dailyStats} />
             {/* Inline Stats */}
             {stats && (
               <div className="flex items-center gap-6 mt-4 pt-4 border-t border-border/40 text-sm text-muted-foreground">
