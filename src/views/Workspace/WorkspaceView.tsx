@@ -16,7 +16,9 @@ import type { WorkspaceData, WorkspaceProject, Feature, FeatureStatus, PanelStat
 export function WorkspaceView() {
   const [workspace, setWorkspace] = useState<WorkspaceData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [sharedPanelCollapsed, setSharedPanelCollapsed] = useState(false);
+  const [sharedPanelCollapsed, setSharedPanelCollapsed] = useState(() => {
+    return localStorage.getItem("feature-sidebar-collapsed") === "true";
+  });
   const [activePanelId, setActivePanelId] = useState<string | undefined>();
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
 
@@ -49,6 +51,11 @@ export function WorkspaceView() {
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
+
+  // Persist sidebar collapsed state
+  useEffect(() => {
+    localStorage.setItem("feature-sidebar-collapsed", String(sharedPanelCollapsed));
+  }, [sharedPanelCollapsed]);
 
   // Listen for feature-complete events
   useEffect(() => {

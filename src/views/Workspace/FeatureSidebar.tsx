@@ -58,9 +58,23 @@ export function FeatureSidebar({
   onFileClick,
   onFeatureRename,
 }: FeatureSidebarProps) {
-  const [expandedPanels, setExpandedPanels] = useState<Set<string>>(() => new Set(pinnedPanels.map(p => p.id)));
-  const [pinnedExpanded, setPinnedExpanded] = useState(true);
-  const [filesExpanded, setFilesExpanded] = useState(false);
+  const [expandedPanels, setExpandedPanels] = useState<Set<string>>(() => {
+    const saved = localStorage.getItem("feature-sidebar-expanded-panels");
+    if (saved) {
+      try {
+        return new Set(JSON.parse(saved) as string[]);
+      } catch { /* ignore */ }
+    }
+    return new Set(pinnedPanels.map(p => p.id));
+  });
+  const [pinnedExpanded, setPinnedExpanded] = useState(() => {
+    const saved = localStorage.getItem("feature-sidebar-pinned-expanded");
+    return saved !== null ? saved === "true" : true;
+  });
+  const [filesExpanded, setFilesExpanded] = useState(() => {
+    const saved = localStorage.getItem("feature-sidebar-files-expanded");
+    return saved === "true";
+  });
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const [width, setWidth] = useState(() => {
@@ -70,10 +84,19 @@ export function FeatureSidebar({
   const sidebarRef = useRef<HTMLDivElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
-  // Persist width
+  // Persist states
   useEffect(() => {
     localStorage.setItem("feature-sidebar-width", String(width));
   }, [width]);
+  useEffect(() => {
+    localStorage.setItem("feature-sidebar-expanded-panels", JSON.stringify([...expandedPanels]));
+  }, [expandedPanels]);
+  useEffect(() => {
+    localStorage.setItem("feature-sidebar-pinned-expanded", String(pinnedExpanded));
+  }, [pinnedExpanded]);
+  useEffect(() => {
+    localStorage.setItem("feature-sidebar-files-expanded", String(filesExpanded));
+  }, [filesExpanded]);
 
   // Resize handlers
   const handleMouseDown = useCallback((e: React.MouseEvent) => {

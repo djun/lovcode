@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Cross2Icon, ExternalLinkIcon } from "@radix-ui/react-icons";
+import { Cross2Icon, ExternalLinkIcon, CodeIcon, ReaderIcon } from "@radix-ui/react-icons";
 import Editor, { loader } from "@monaco-editor/react";
+import { MarkdownRenderer } from "../MarkdownRenderer";
 
 // Configure Monaco to use local assets (avoid CDN)
 loader.config({ paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs" } });
@@ -56,9 +57,11 @@ export function FileViewer({ filePath, onClose }: FileViewerProps) {
   const [content, setContent] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"source" | "preview">("preview");
 
   const fileName = useMemo(() => filePath.split("/").pop() || filePath, [filePath]);
   const language = useMemo(() => getLanguage(filePath), [filePath]);
+  const isMarkdown = language === "markdown";
 
   useEffect(() => {
     let cancelled = false;
@@ -104,6 +107,32 @@ export function FileViewer({ filePath, onClose }: FileViewerProps) {
         <span className="flex-1 text-sm font-medium text-ink truncate" title={filePath}>
           {fileName}
         </span>
+        {isMarkdown && (
+          <div className="flex items-center bg-card-alt rounded-lg p-0.5">
+            <button
+              onClick={() => setViewMode("preview")}
+              className={`p-1.5 rounded transition-colors ${
+                viewMode === "preview"
+                  ? "bg-background text-ink shadow-sm"
+                  : "text-muted-foreground hover:text-ink"
+              }`}
+              title="Preview"
+            >
+              <ReaderIcon className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setViewMode("source")}
+              className={`p-1.5 rounded transition-colors ${
+                viewMode === "source"
+                  ? "bg-background text-ink shadow-sm"
+                  : "text-muted-foreground hover:text-ink"
+              }`}
+              title="Source"
+            >
+              <CodeIcon className="w-4 h-4" />
+            </button>
+          </div>
+        )}
         <button
           onClick={handleOpenInEditor}
           className="p-1.5 text-muted-foreground hover:text-ink hover:bg-card-alt rounded transition-colors"
@@ -129,6 +158,10 @@ export function FileViewer({ filePath, onClose }: FileViewerProps) {
         ) : error ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-sm text-destructive">{error}</div>
+          </div>
+        ) : isMarkdown && viewMode === "preview" ? (
+          <div className="h-full overflow-auto p-6 bg-background">
+            <MarkdownRenderer content={content} />
           </div>
         ) : (
           <Editor

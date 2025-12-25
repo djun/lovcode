@@ -75,24 +75,42 @@ export function TerminalPane({
       fitAddon.fit();
     });
 
-    // Workaround: Fix Chinese IME Shift+symbol issue (xterm.js #4486)
-    const customKeyHandler = (event: KeyboardEvent) => {
-      if (event.type !== "keydown") return true;
-      if (!ptyReadySessions.has(sessionId)) return true;
-      if (event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
-        const key = event.key;
-        if (key.length === 1 && /^[!@#$%^&*()_+{}|:"<>?~]$/.test(key)) {
-          const encoder = new TextEncoder();
-          invoke("pty_write", { id: sessionId, data: Array.from(encoder.encode(key)) });
-          return false;
-        }
-      }
-      return true;
-    };
-    term.attachCustomKeyEventHandler(customKeyHandler);
-
     // Track mount state
     const mountState = { isMounted: true };
+
+    // IME Shift+symbol fix: detect dropped characters and resend
+    // xterm.js may drop the first Shift+symbol when Chinese IME is active
+    let pendingChar: string | null = null;
+    let pendingTimer: ReturnType<typeof setTimeout> | null = null;
+    let dataReceived = false;
+
+    const customKeyHandler = (event: KeyboardEvent) => {
+      if (event.type !== "keydown") return true;
+      if (event.isComposing) return true;
+      if (!ptyReadySessions.has(sessionId)) return true;
+
+      if (event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
+        const key = event.key;
+        // Detect punctuation (single char, not alphanumeric/space)
+        if (key.length === 1 && !/^[a-zA-Z0-9\s]$/.test(key)) {
+          pendingChar = key;
+          dataReceived = false;
+
+          if (pendingTimer) clearTimeout(pendingTimer);
+          pendingTimer = setTimeout(() => {
+            // If no data received within 50ms, the char was dropped - resend it
+            if (pendingChar && !dataReceived) {
+              const encoder = new TextEncoder();
+              invoke("pty_write", { id: sessionId, data: Array.from(encoder.encode(pendingChar)) });
+            }
+            pendingChar = null;
+            pendingTimer = null;
+          }, 50);
+        }
+      }
+      return true; // Let xterm handle normally
+    };
+    term.attachCustomKeyEventHandler(customKeyHandler);
 
     // Initialize PTY session
     const initPty = async () => {
@@ -143,6 +161,20 @@ export function TerminalPane({
     // Handle user input
     const onDataDisposable = term.onData((data) => {
       if (!ptyReadySessions.has(sessionId)) return;
+
+      // Mark that we received data (for IME fix)
+      if (pendingChar) {
+        dataReceived = true;
+        // If received data contains the pending char, clear the timer
+        if (data.includes(pendingChar)) {
+          pendingChar = null;
+          if (pendingTimer) {
+            clearTimeout(pendingTimer);
+            pendingTimer = null;
+          }
+        }
+      }
+
       const encoder = new TextEncoder();
       const bytes = Array.from(encoder.encode(data));
       invoke("pty_write", { id: sessionId, data: bytes }).catch(console.error);
@@ -174,6 +206,7 @@ export function TerminalPane({
     // Cleanup - detach but don't dispose (preserves instance for reattachment)
     return () => {
       mountState.isMounted = false;
+      if (pendingTimer) clearTimeout(pendingTimer);
       onDataDisposable.dispose();
       onTitleDisposable.dispose();
       unlistenData.then((fn) => fn());
