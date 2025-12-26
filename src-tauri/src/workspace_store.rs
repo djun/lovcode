@@ -103,6 +103,8 @@ pub struct WorkspaceProject {
     #[serde(default)]
     pub shared_panels: Vec<PanelState>,
     pub active_feature_id: Option<String>,
+    #[serde(default)]
+    pub feature_counter: Option<u32>,
     pub created_at: u64,
 }
 
@@ -167,6 +169,7 @@ pub fn add_project(path: String) -> Result<WorkspaceProject, String> {
         features: Vec::new(),
         shared_panels: Vec::new(),
         active_feature_id: None,
+        feature_counter: None,
         created_at: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs())

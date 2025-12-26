@@ -131,18 +131,30 @@ export function ProjectSidebar({
                         >
                           {project.name.split(/[-_]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
                         </span>
-                        <span
-                          className={`p-0.5 rounded hover:bg-muted ${hasFeatures ? "text-muted-foreground" : "text-muted-foreground/30"}`}
+                        <span className="flex items-center -mr-1">
+                          <span
+                            className="p-0.5 rounded hover:bg-muted text-muted-foreground/50 hover:text-muted-foreground"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onAddFeature(project.id);
+                            }}
+                            title="New Feature"
+                          >
+                            <PlusIcon className="w-3.5 h-3.5" />
+                          </span>
+                          <span
+                            className={`p-0.5 rounded hover:bg-muted ${hasFeatures ? "text-muted-foreground" : "text-muted-foreground/30"}`}
                           onClick={(e) => {
                             e.stopPropagation();
                             if (hasFeatures) toggleProjectExpanded(project.id);
                           }}
                         >
-                          {isExpanded && hasFeatures ? (
-                            <ChevronDownIcon className="w-3.5 h-3.5" />
-                          ) : (
-                            <ChevronRightIcon className="w-3.5 h-3.5" />
-                          )}
+                            {isExpanded && hasFeatures ? (
+                              <ChevronDownIcon className="w-3.5 h-3.5" />
+                            ) : (
+                              <ChevronRightIcon className="w-3.5 h-3.5" />
+                            )}
+                          </span>
                         </span>
                       </div>
                     </div>

@@ -223,10 +223,12 @@ export function TerminalPane({
     });
 
     // Listen for PTY data events
+    // Use streaming decoder to handle multi-byte UTF-8 chars split across events
+    const decoder = new TextDecoder("utf-8", { fatal: false });
     const unlistenData = listen<PtyDataEvent>("pty-data", (event) => {
       if (event.payload.id === sessionId && mountState.isMounted) {
         const bytes = new Uint8Array(event.payload.data);
-        const text = new TextDecoder().decode(bytes);
+        const text = decoder.decode(bytes, { stream: true });
         term.write(text);
       }
     });
