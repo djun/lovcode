@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.15.0
+
+### Minor Changes
+
+- Add provider analytics for LLM provider usage tracking
+
 ## 0.14.0
 
 ### Minor Changes
