@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { FileIcon, ChatBubbleIcon, ReloadIcon } from "@radix-ui/react-icons";
 import { Switch } from "../../components/ui/switch";
@@ -7,6 +7,7 @@ import { chatViewModeAtom, allProjectsSortByAtom, hideEmptySessionsAllAtom } fro
 import { useAppConfig } from "../../context";
 import { VirtualChatList } from "./VirtualChatList";
 import { formatRelativeTime } from "./utils";
+import { useInvokeQuery } from "../../hooks";
 import type { Project, Session, ChatMessage, SearchResult, ChatsResponse } from "../../types";
 
 interface ProjectListProps {
@@ -18,15 +19,20 @@ interface ProjectListProps {
 export function ProjectList({ onSelectProject, onSelectSession, onSelectChat }: ProjectListProps) {
   const { formatPath } = useAppConfig();
   const [viewMode, setViewMode] = useAtom(chatViewModeAtom);
-  const [projects, setProjects] = useState<Project[] | null>(null);
-  const [allSessions, setAllSessions] = useState<Session[] | null>(null);
-  const [allChats, setAllChats] = useState<ChatMessage[] | null>(null);
-  const [loadingProjects, setLoadingProjects] = useState(false);
-  const [loadingSessions, setLoadingSessions] = useState(false);
-  const [loadingChats, setLoadingChats] = useState(false);
+
+  // Use react-query for cached data fetching
+  const { data: projects, isLoading: loadingProjects } = useInvokeQuery<Project[]>(["projects"], "list_projects");
+  const { data: allSessions, isLoading: loadingSessions } = useInvokeQuery<Session[]>(["sessions"], "list_all_sessions");
+  const { data: chatsResponse, isLoading: loadingChats } = useInvokeQuery<ChatsResponse>(["chats"], "list_all_chats", { limit: 50 });
+
+  // Local state for pagination (chats loaded beyond initial fetch)
+  const [extraChats, setExtraChats] = useState<ChatMessage[]>([]);
   const [loadingMoreChats, setLoadingMoreChats] = useState(false);
-  const [totalChats, setTotalChats] = useState(0);
+
+  const allChats = chatsResponse ? [...chatsResponse.items, ...extraChats] : null;
+  const totalChats = chatsResponse?.total ?? 0;
   const CHATS_PAGE_SIZE = 50;
+
   const [sortBy, setSortBy] = useAtom(allProjectsSortByAtom);
   const [hideEmptySessions, setHideEmptySessions] = useAtom(hideEmptySessionsAllAtom);
   const [searchQuery, setSearchQuery] = useState("");
@@ -36,36 +42,6 @@ export function ProjectList({ onSelectProject, onSelectSession, onSelectChat }: 
   const [indexStatus, setIndexStatus] = useState<string | null>(null);
   const [indexBuilt, setIndexBuilt] = useState(false);
 
-  useEffect(() => {
-    if (projects === null && !loadingProjects) {
-      setLoadingProjects(true);
-      invoke<Project[]>("list_projects")
-        .then(setProjects)
-        .finally(() => setLoadingProjects(false));
-    }
-  }, [projects, loadingProjects]);
-
-  useEffect(() => {
-    if (allSessions === null && !loadingSessions) {
-      setLoadingSessions(true);
-      invoke<Session[]>("list_all_sessions")
-        .then(setAllSessions)
-        .finally(() => setLoadingSessions(false));
-    }
-  }, [allSessions, loadingSessions]);
-
-  useEffect(() => {
-    if (allChats === null && !loadingChats) {
-      setLoadingChats(true);
-      invoke<ChatsResponse>("list_all_chats", { limit: CHATS_PAGE_SIZE })
-        .then((res) => {
-          setAllChats(res.items);
-          setTotalChats(res.total);
-        })
-        .finally(() => setLoadingChats(false));
-    }
-  }, [allChats, loadingChats]);
-
   const loadMoreChats = useCallback(async () => {
     if (loadingMoreChats || !allChats || allChats.length >= totalChats) return;
     setLoadingMoreChats(true);
@@ -74,7 +50,7 @@ export function ProjectList({ onSelectProject, onSelectSession, onSelectChat }: 
         limit: CHATS_PAGE_SIZE,
         offset: allChats.length,
       });
-      setAllChats((prev) => [...(prev || []), ...res.items]);
+      setExtraChats((prev) => [...prev, ...res.items]);
     } finally {
       setLoadingMoreChats(false);
     }

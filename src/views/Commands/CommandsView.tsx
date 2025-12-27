@@ -1,5 +1,6 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useInvokeQuery, useQueryClient } from "../../hooks";
 import {
   DndContext,
   DragOverlay,
@@ -68,9 +69,9 @@ export function CommandsView({
   onMarketplaceSelect,
   onBrowseMore,
 }: CommandsViewProps) {
-  const [commands, setCommands] = useState<LocalCommand[]>([]);
-  const [commandStats, setCommandStats] = useState<Record<string, number>>({});
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const { data: commands = [], isLoading } = useInvokeQuery<LocalCommand[]>(["commands"], "list_local_commands");
+  const { data: commandStats = {} } = useInvokeQuery<Record<string, number>>(["commandStats"], "get_command_stats");
   const [sortKey, setSortKey] = useAtom(commandsSortKeyAtom);
   const [sortDir, setSortDir] = useAtom(commandsSortDirAtom);
   const [showDeprecated, setShowDeprecated] = useAtom(commandsShowDeprecatedAtom);
@@ -97,9 +98,8 @@ export function CommandsView({
     return mainCount + aliasCount;
   };
 
-  const refreshCommands = async () => {
-    const cmds = await invoke<LocalCommand[]>("list_local_commands");
-    setCommands(cmds);
+  const refreshCommands = () => {
+    queryClient.invalidateQueries({ queryKey: ["commands"] });
   };
 
   const handleDeprecate = async () => {
@@ -231,17 +231,6 @@ export function CommandsView({
     })
   );
 
-  useEffect(() => {
-    invoke<LocalCommand[]>("list_local_commands")
-      .then(setCommands)
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
-    if (!loading) {
-      invoke<Record<string, number>>("get_command_stats").then(setCommandStats);
-    }
-  }, [loading]);
 
   const statusFiltered = filtered.filter((cmd) => {
     if (cmd.status === "active") return true;
@@ -389,7 +378,7 @@ export function CommandsView({
     );
   };
 
-  if (loading) return <LoadingState message="Loading commands..." />;
+  if (isLoading) return <LoadingState message="Loading commands..." />;
 
   return (
     <ConfigPage>

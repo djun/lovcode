@@ -1,5 +1,4 @@
-import { useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useState } from "react";
 import { Link2Icon } from "@radix-ui/react-icons";
 import { Store } from "lucide-react";
 import type { ClaudeSettings } from "../../types";
@@ -12,6 +11,7 @@ import {
   MarketplaceSection,
   type MarketplaceItem,
 } from "../../components/config";
+import { useInvokeQuery } from "../../hooks";
 
 function BrowseMarketplaceButton({ onClick }: { onClick?: () => void }) {
   if (!onClick) return null;
@@ -38,17 +38,10 @@ export function HooksView({
   onMarketplaceSelect,
   onBrowseMore,
 }: HooksViewProps) {
-  const [settings, setSettings] = useState<ClaudeSettings | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { data: settings, isLoading } = useInvokeQuery<ClaudeSettings>(["settings"], "get_settings");
   const [search, setSearch] = useState("");
 
-  useEffect(() => {
-    invoke<ClaudeSettings>("get_settings")
-      .then(setSettings)
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) return <LoadingState message="Loading hooks..." />;
+  if (isLoading) return <LoadingState message="Loading hooks..." />;
 
   const hooks = settings?.hooks as Record<string, unknown[]> | null;
   const hookEntries = hooks ? Object.entries(hooks) : [];

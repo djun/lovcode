@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useInvokeQuery } from "../../hooks";
 import { BookmarkIcon, ChevronDownIcon } from "@radix-ui/react-icons";
 import { useAtom } from "jotai";
 import { referenceCollapsedGroupsAtom, referenceExpandedSourceAtom } from "../../store";
@@ -127,8 +128,7 @@ export function ReferenceView({
   onDocOpen,
   onDocClose,
 }: ReferenceViewProps) {
-  const [sources, setSources] = useState<ReferenceSource[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: sources = [], isLoading: loading } = useInvokeQuery<ReferenceSource[]>(["referenceSources"], "list_reference_sources");
   const [persistedSource, setPersistedSource] = useAtom(referenceExpandedSourceAtom);
   const [expandedSource, setExpandedSource] = useState<string | null>(
     initialSource ?? persistedSource
@@ -147,13 +147,6 @@ export function ReferenceView({
   const [docLoading, setDocLoading] = useState(false);
 
   const isDocView = initialSource !== undefined && initialDocIndex !== undefined;
-
-  // Load sources
-  useEffect(() => {
-    invoke<ReferenceSource[]>("list_reference_sources")
-      .then(setSources)
-      .finally(() => setLoading(false));
-  }, []);
 
   // Load docs when source is expanded or when initial source is provided
   useEffect(() => {

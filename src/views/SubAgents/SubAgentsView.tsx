@@ -1,5 +1,3 @@
-import { useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { PersonIcon } from "@radix-ui/react-icons";
 import { Store } from "lucide-react";
 import type { LocalAgent } from "../../types";
@@ -14,6 +12,7 @@ import {
   useSearch,
   type MarketplaceItem,
 } from "../../components/config";
+import { useInvokeQuery } from "../../hooks";
 
 function BrowseMarketplaceButton({ onClick }: { onClick?: () => void }) {
   if (!onClick) return null;
@@ -42,17 +41,10 @@ export function SubAgentsView({
   onMarketplaceSelect,
   onBrowseMore,
 }: SubAgentsViewProps) {
-  const [agents, setAgents] = useState<LocalAgent[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: agents = [], isLoading } = useInvokeQuery<LocalAgent[]>(["agents"], "list_local_agents");
   const { search, setSearch, filtered } = useSearch(agents, ["name", "description", "model"]);
 
-  useEffect(() => {
-    invoke<LocalAgent[]>("list_local_agents")
-      .then(setAgents)
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) return <LoadingState message="Loading sub-agents..." />;
+  if (isLoading) return <LoadingState message="Loading sub-agents..." />;
 
   return (
     <ConfigPage>

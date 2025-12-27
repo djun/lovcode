@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Component1Icon, ExternalLinkIcon } from "@radix-ui/react-icons";
@@ -14,6 +14,7 @@ import {
   MarketplaceSection,
   type MarketplaceItem,
 } from "../../components/config";
+import { useInvokeQuery, useQueryClient } from "../../hooks";
 
 function BrowseMarketplaceButton({ onClick }: { onClick?: () => void }) {
   if (!onClick) return null;
@@ -37,24 +38,13 @@ interface McpViewProps {
 
 export function McpView({ marketplaceItems, onMarketplaceSelect, onBrowseMore }: McpViewProps) {
   const { formatPath } = useAppConfig();
-  const [servers, setServers] = useState<McpServer[]>([]);
-  const [mcpConfigPath, setMcpConfigPath] = useState<string>("");
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const { data: settings, isLoading: settingsLoading } = useInvokeQuery<ClaudeSettings>(["settings"], "get_settings");
+  const { data: mcpConfigPath = "" } = useInvokeQuery<string>(["mcpConfigPath"], "get_mcp_config_path");
+  const servers = settings?.mcp_servers ?? [];
   const [search, setSearch] = useState("");
   const [editingEnv, setEditingEnv] = useState<{ server: string; key: string } | null>(null);
   const [editValue, setEditValue] = useState("");
-
-  useEffect(() => {
-    Promise.all([
-      invoke<ClaudeSettings>("get_settings"),
-      invoke<string>("get_mcp_config_path"),
-    ])
-      .then(([settings, path]) => {
-        setServers(settings.mcp_servers);
-        setMcpConfigPath(path);
-      })
-      .finally(() => setLoading(false));
-  }, []);
 
   const handleEnvClick = (serverName: string, key: string, currentValue: string) => {
     setEditingEnv({ server: serverName, key });
@@ -68,13 +58,7 @@ export function McpView({ marketplaceItems, onMarketplaceSelect, onBrowseMore }:
       envKey: editingEnv.key,
       envValue: editValue,
     });
-    setServers((prev) =>
-      prev.map((s) =>
-        s.name === editingEnv.server
-          ? { ...s, env: { ...s.env, [editingEnv.key]: editValue } }
-          : s
-      )
-    );
+    queryClient.invalidateQueries({ queryKey: ["settings"] });
     setEditingEnv(null);
   };
 
@@ -86,7 +70,7 @@ export function McpView({ marketplaceItems, onMarketplaceSelect, onBrowseMore }:
     return null;
   };
 
-  if (loading) return <LoadingState message="Loading MCP servers..." />;
+  if (settingsLoading) return <LoadingState message="Loading MCP servers..." />;
 
   const filtered = servers.filter(
     (s) =>

@@ -1,20 +1,14 @@
-import { useState, useEffect, useMemo } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useMemo } from "react";
 import type { FeatureType, Project, Session, LocalCommand } from "../../types";
 import { FEATURES, FEATURE_ICONS } from "../../constants";
 import { ActivityHeatmap, RecentActivity, QuickActions } from "../../components/home";
+import { useInvokeQuery } from "../../hooks";
 
 interface HomeProps {
   onFeatureClick: (feature: FeatureType) => void;
   onProjectClick: (project: Project) => void;
   onSessionClick: (session: Session) => void;
   onSearch: () => void;
-}
-
-interface HomeData {
-  projects: Project[];
-  sessions: Session[];
-  commands: LocalCommand[];
 }
 
 interface ActivityStats {
@@ -24,21 +18,12 @@ interface ActivityStats {
 }
 
 export function Home({ onFeatureClick, onProjectClick, onSessionClick, onSearch }: HomeProps) {
-  const [data, setData] = useState<HomeData | null>(null);
-  const [activityStats, setActivityStats] = useState<ActivityStats | null>(null);
+  const { data: projects } = useInvokeQuery<Project[]>(["projects"], "list_projects");
+  const { data: sessions } = useInvokeQuery<Session[]>(["sessions"], "list_all_sessions");
+  const { data: commands } = useInvokeQuery<LocalCommand[]>(["commands"], "list_local_commands");
+  const { data: activityStats } = useInvokeQuery<ActivityStats>(["activityStats"], "get_activity_stats");
 
-  useEffect(() => {
-    Promise.all([
-      invoke<Project[]>("list_projects"),
-      invoke<Session[]>("list_all_sessions"),
-      invoke<LocalCommand[]>("list_local_commands"),
-    ]).then(([projects, sessions, commands]) => {
-      setData({ projects, sessions, commands });
-    });
-
-    // Load activity stats for heatmap
-    invoke<ActivityStats>("get_activity_stats").then(setActivityStats);
-  }, []);
+  const data = projects && sessions && commands ? { projects, sessions, commands } : null;
 
 
   // Get last active project

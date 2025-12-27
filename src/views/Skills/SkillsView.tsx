@@ -1,5 +1,3 @@
-import { useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { TargetIcon } from "@radix-ui/react-icons";
 import { Store } from "lucide-react";
 import type { LocalSkill } from "../../types";
@@ -14,6 +12,7 @@ import {
   useSearch,
   type MarketplaceItem,
 } from "../../components/config";
+import { useInvokeQuery } from "../../hooks";
 
 function BrowseMarketplaceButton({ onClick }: { onClick?: () => void }) {
   if (!onClick) return null;
@@ -42,17 +41,10 @@ export function SkillsView({
   onMarketplaceSelect,
   onBrowseMore,
 }: SkillsViewProps) {
-  const [skills, setSkills] = useState<LocalSkill[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: skills = [], isLoading } = useInvokeQuery<LocalSkill[]>(["skills"], "list_local_skills");
   const { search, setSearch, filtered } = useSearch(skills, ["name", "description"]);
 
-  useEffect(() => {
-    invoke<LocalSkill[]>("list_local_skills")
-      .then(setSkills)
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) return <LoadingState message="Loading skills..." />;
+  if (isLoading) return <LoadingState message="Loading skills..." />;
 
   return (
     <ConfigPage>

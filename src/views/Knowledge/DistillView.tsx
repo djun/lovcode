@@ -1,5 +1,4 @@
-import { useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { LightningBoltIcon } from "@radix-ui/react-icons";
 import type { DistillDocument } from "../../types";
@@ -13,6 +12,7 @@ import {
   useSearch,
 } from "../../components/config";
 import { DistillMenu } from "./DistillMenu";
+import { useInvokeQuery, useQueryClient } from "../../hooks";
 
 interface DistillViewProps {
   onSelect: (doc: DistillDocument) => void;
@@ -21,29 +21,25 @@ interface DistillViewProps {
 }
 
 export function DistillView({ onSelect, watchEnabled, onWatchToggle }: DistillViewProps) {
-  const [documents, setDocuments] = useState<DistillDocument[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const { data: documents = [], isLoading } = useInvokeQuery<DistillDocument[]>(["distillDocuments"], "list_distill_documents");
   const { search, setSearch, filtered } = useSearch(documents, ["title", "tags"]);
 
-  const fetchDocuments = () => {
-    setLoading(true);
-    invoke<DistillDocument[]>("list_distill_documents")
-      .then(setDocuments)
-      .finally(() => setLoading(false));
+  const refreshDocuments = () => {
+    queryClient.invalidateQueries({ queryKey: ["distillDocuments"] });
   };
 
   useEffect(() => {
-    fetchDocuments();
     // Listen for distill directory changes
     const unlisten = listen("distill-changed", () => {
-      fetchDocuments();
+      refreshDocuments();
     });
     return () => {
       unlisten.then((fn) => fn());
     };
   }, []);
 
-  if (loading) return <LoadingState message="Loading distill documents..." />;
+  if (isLoading) return <LoadingState message="Loading distill documents..." />;
 
   return (
     <ConfigPage>
@@ -54,7 +50,7 @@ export function DistillView({ onSelect, watchEnabled, onWatchToggle }: DistillVi
           <DistillMenu
             watchEnabled={watchEnabled}
             onWatchToggle={onWatchToggle}
-            onRefresh={fetchDocuments}
+            onRefresh={refreshDocuments}
           />
         }
       />

@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useState } from "react";
 import { CubeIcon, StarFilledIcon, HeartFilledIcon } from "@radix-ui/react-icons";
 import type { TemplatesCatalog, TemplateComponent, TemplateCategory } from "../../types";
 import { SOURCE_FILTERS, TEMPLATE_CATEGORIES, type SourceFilterId } from "../../constants";
 import { LoadingState, EmptyState, SearchInput, PageHeader, ConfigPage } from "../../components/config";
+import { useInvokeQuery } from "../../hooks";
 
 interface MarketplaceViewProps {
   initialCategory?: TemplateCategory;
@@ -11,28 +11,19 @@ interface MarketplaceViewProps {
 }
 
 export function MarketplaceView({ initialCategory, onSelectTemplate }: MarketplaceViewProps) {
-  const [catalog, setCatalog] = useState<TemplatesCatalog | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data: catalog, isLoading, error } = useInvokeQuery<TemplatesCatalog>(["templatesCatalog"], "get_templates_catalog");
   const activeCategory = initialCategory || "commands";
   const [search, setSearch] = useState("");
   const [sourceFilter, setSourceFilter] = useState<SourceFilterId>("all");
 
-  useEffect(() => {
-    invoke<TemplatesCatalog>("get_templates_catalog")
-      .then(setCatalog)
-      .catch((e) => setError(String(e)))
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) return <LoadingState message="Loading templates catalog..." />;
+  if (isLoading) return <LoadingState message="Loading templates catalog..." />;
 
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center h-full px-6">
         <span className="text-4xl mb-4">❌</span>
         <p className="text-ink font-medium mb-2">Failed to load templates</p>
-        <p className="text-sm text-muted-foreground text-center max-w-md">{error}</p>
+        <p className="text-sm text-muted-foreground text-center max-w-md">{error.message}</p>
       </div>
     );
   }
