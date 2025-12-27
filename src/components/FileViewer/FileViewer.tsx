@@ -243,13 +243,13 @@ export function FileViewer({ filePath, onClose }: FileViewerProps) {
                   <span className="text-muted-foreground">Format</span>
                   <p className="text-ink">{fileExt}</p>
                 </div>
-                {imageInfo?.width > 0 && (
+                {imageInfo?.width && imageInfo.width > 0 && (
                   <div>
                     <span className="text-muted-foreground">Dimensions</span>
                     <p className="text-ink">{imageInfo.width} × {imageInfo.height}</p>
                   </div>
                 )}
-                {imageInfo?.fileSize > 0 && (
+                {imageInfo?.fileSize && imageInfo.fileSize > 0 && (
                   <div>
                     <span className="text-muted-foreground">Size</span>
                     <p className="text-ink">{formatFileSize(imageInfo.fileSize)}</p>

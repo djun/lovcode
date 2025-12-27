@@ -35,7 +35,7 @@ export function GlobalHeader({
   onShowProfileDialog,
   onShowSettings,
 }: GlobalHeaderProps) {
-  const [sidebarCollapsed, setSidebarCollapsed] = useAtom(sidebarCollapsedAtom);
+  const [sidebarCollapsed] = useAtom(sidebarCollapsedAtom);
   const [profile] = useAtom(profileAtom);
   const [view] = useAtom(viewAtom);
   const [workspace] = useAtom(workspaceDataAtom);
@@ -180,7 +180,7 @@ function ProfileMenu({
 }) {
   return (
     <div className="pr-4">
-      <Popover modal={false}>
+      <Popover>
         <PopoverTrigger className="rounded-full hover:ring-2 hover:ring-primary/50 transition-all">
           <Avatar className="h-6 w-6 cursor-pointer">
             {profile.avatarUrl ? <AvatarImage src={profile.avatarUrl} alt={profile.nickname || "User"} /> : null}
