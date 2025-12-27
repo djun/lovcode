@@ -1,6 +1,6 @@
 import { useEffect, useCallback, useMemo, useRef } from "react";
 import { useAtom } from "jotai";
-import { activePanelIdAtom, workspaceDataAtom, workspaceLoadingAtom } from "@/store";
+import { activePanelIdAtom, workspaceDataAtom, workspaceLoadingAtom, viewAtom } from "@/store";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -16,6 +16,44 @@ export function WorkspaceView() {
   const [workspace, setWorkspace] = useAtom(workspaceDataAtom);
   const [loading, setLoading] = useAtom(workspaceLoadingAtom);
   const [activePanelId, setActivePanelId] = useAtom(activePanelIdAtom);
+  const [view] = useAtom(viewAtom);
+
+  // Sync workspace state from View params (for back/forward navigation)
+  useEffect(() => {
+    if (view.type !== "workspace" || !workspace) return;
+
+    const { projectId, featureId, mode } = view;
+    if (!projectId && !featureId && !mode) return;
+
+    // Check if we need to update
+    const currentProject = workspace.projects.find(p => p.id === workspace.active_project_id);
+    const needsUpdate =
+      (projectId && workspace.active_project_id !== projectId) ||
+      (featureId && currentProject?.active_feature_id !== featureId) ||
+      (mode && currentProject?.view_mode !== mode);
+
+    if (!needsUpdate) return;
+
+    const newProjects = workspace.projects.map(p => {
+      if (projectId && p.id === projectId) {
+        return {
+          ...p,
+          ...(featureId && { active_feature_id: featureId }),
+          ...(mode && { view_mode: mode }),
+        };
+      }
+      return p;
+    });
+
+    const newWorkspace = {
+      ...workspace,
+      projects: newProjects,
+      ...(projectId && { active_project_id: projectId }),
+    };
+
+    setWorkspace(newWorkspace);
+    invoke("workspace_save", { data: newWorkspace }).catch(console.error);
+  }, [view]);
 
   // Load workspace data and reset running features (PTY sessions don't survive restarts)
   useEffect(() => {

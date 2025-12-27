@@ -2,7 +2,7 @@
 export { sidebarCollapsedAtom, marketplaceCategoryAtom, shortenPathsAtom, profileAtom } from "./atoms/app";
 
 // UI atoms
-export { selectedFileAtom, fileViewModeAtom, activePanelIdAtom, viewAtom, viewHistoryAtom, historyIndexAtom } from "./atoms/ui";
+export { selectedFileAtom, fileViewModeAtom, activePanelIdAtom, navigationStateAtom, viewAtom, viewHistoryAtom, historyIndexAtom } from "./atoms/ui";
 
 // FileTree atoms
 export { expandedPathsAtom } from "./atoms/fileTree";

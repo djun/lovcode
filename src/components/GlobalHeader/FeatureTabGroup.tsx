@@ -3,7 +3,8 @@ import { useAtom } from "jotai";
 import { PlusIcon, ArchiveIcon, DashboardIcon } from "@radix-ui/react-icons";
 import { SortableContext, horizontalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { workspaceDataAtom, collapsedProjectGroupsAtom, viewAtom } from "@/store";
+import { workspaceDataAtom, collapsedProjectGroupsAtom } from "@/store";
+import { useNavigate } from "@/hooks";
 import { invoke } from "@tauri-apps/api/core";
 import {
   ContextMenu,
@@ -39,7 +40,7 @@ export function FeatureTabGroup({
 }: FeatureTabGroupProps) {
   const [workspace, setWorkspace] = useAtom(workspaceDataAtom);
   const [collapsedGroups, setCollapsedGroups] = useAtom(collapsedProjectGroupsAtom);
-  const [, setView] = useAtom(viewAtom);
+  const navigate = useNavigate();
   const [hasLogo, setHasLogo] = useState(true); // Default true to hide name initially
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [nextSeq, setNextSeq] = useState(0);
@@ -67,7 +68,9 @@ export function FeatureTabGroup({
   const handleSelectProject = async () => {
     if (!workspace) return;
 
-    setView({ type: "workspace" });
+    const activeFeatureId = project.active_feature_id;
+    const mode = project.view_mode || "features";
+    navigate({ type: "workspace", projectId: project.id, featureId: activeFeatureId, mode });
 
     if (workspace.active_project_id === project.id) return;
 
@@ -82,7 +85,7 @@ export function FeatureTabGroup({
   const handleOpenDashboard = async () => {
     if (!workspace) return;
 
-    setView({ type: "workspace" });
+    navigate({ type: "workspace", projectId: project.id, mode: "dashboard" });
 
     const newProjects = workspace.projects.map((p) =>
       p.id === project.id ? { ...p, view_mode: "dashboard" as const } : p
@@ -118,7 +121,7 @@ export function FeatureTabGroup({
   const handleUnarchiveFeature = async (featureId: string) => {
     if (!workspace) return;
 
-    setView({ type: "workspace" });
+    navigate({ type: "workspace", projectId: project.id, featureId, mode: "features" });
 
     const newProjects = workspace.projects.map((p) => {
       if (p.id !== project.id) return p;
@@ -152,8 +155,6 @@ export function FeatureTabGroup({
   const handleCreateFeature = async (name: string, description: string) => {
     if (!workspace) return;
 
-    setView({ type: "workspace" });
-
     try {
       // Backend handles seq and feature_counter atomically (global)
       const feature = await invoke<Feature>("workspace_create_feature", {
@@ -161,6 +162,9 @@ export function FeatureTabGroup({
         name,
         description: description || undefined,
       });
+
+      // Navigate after we have the feature id
+      navigate({ type: "workspace", projectId: project.id, featureId: feature.id, mode: "features" });
 
       const newProjects = workspace.projects.map((p) =>
         p.id === project.id
@@ -190,7 +194,7 @@ export function FeatureTabGroup({
   const handleSelectFeature = async (featureId: string) => {
     if (!workspace) return;
 
-    setView({ type: "workspace" });
+    navigate({ type: "workspace", projectId: project.id, featureId, mode: "features" });
 
     const newProjects = workspace.projects.map((p) =>
       p.id === project.id

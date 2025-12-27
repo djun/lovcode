@@ -24,7 +24,7 @@ import type {
   TemplatesCatalog, UserProfile,
 } from "./types";
 import { useAtom } from "jotai";
-import { sidebarCollapsedAtom, marketplaceCategoryAtom, shortenPathsAtom, profileAtom, viewAtom, viewHistoryAtom, historyIndexAtom } from "./store";
+import { sidebarCollapsedAtom, marketplaceCategoryAtom, shortenPathsAtom, profileAtom, navigationStateAtom, viewAtom, viewHistoryAtom, historyIndexAtom } from "./store";
 import { AppConfigContext, useAppConfig, type AppConfig } from "./context";
 import { FEATURES, FEATURE_ICONS } from "./constants";
 // Modular views
@@ -62,39 +62,44 @@ import {
 // ============================================================================
 
 function App() {
-  const [view, setView] = useAtom(viewAtom);
-  const [viewHistory, setViewHistory] = useAtom(viewHistoryAtom);
-  const [historyIndex, setHistoryIndex] = useAtom(historyIndexAtom);
+  const [view] = useAtom(viewAtom);
+  const [viewHistory] = useAtom(viewHistoryAtom);
+  const [historyIndex] = useAtom(historyIndexAtom);
+  const [, setNavigationState] = useAtom(navigationStateAtom);
 
   const navigate = useCallback((newView: View) => {
-    setViewHistory(prev => {
-      const newHistory = prev.slice(0, historyIndex + 1);
+    setNavigationState(prev => {
+      const newHistory = prev.history.slice(0, prev.index + 1);
       newHistory.push(newView);
-      if (newHistory.length > 50) newHistory.shift();
-      return newHistory;
+      let newIndex = prev.index + 1;
+      if (newHistory.length > 50) {
+        newHistory.shift();
+        newIndex = 49;
+      }
+      return { history: newHistory, index: newIndex };
     });
-    setHistoryIndex(prev => Math.min(prev + 1, 49));
-    setView(newView);
-  }, [historyIndex]);
+  }, [setNavigationState]);
 
   const canGoBack = historyIndex > 0;
   const canGoForward = historyIndex < viewHistory.length - 1;
 
   const goBack = useCallback(() => {
-    if (canGoBack) {
-      const newIndex = historyIndex - 1;
-      setHistoryIndex(newIndex);
-      setView(viewHistory[newIndex]);
-    }
-  }, [canGoBack, historyIndex, viewHistory]);
+    setNavigationState(prev => {
+      if (prev.index > 0) {
+        return { ...prev, index: prev.index - 1 };
+      }
+      return prev;
+    });
+  }, [setNavigationState]);
 
   const goForward = useCallback(() => {
-    if (canGoForward) {
-      const newIndex = historyIndex + 1;
-      setHistoryIndex(newIndex);
-      setView(viewHistory[newIndex]);
-    }
-  }, [canGoForward, historyIndex, viewHistory]);
+    setNavigationState(prev => {
+      if (prev.index < prev.history.length - 1) {
+        return { ...prev, index: prev.index + 1 };
+      }
+      return prev;
+    });
+  }, [setNavigationState]);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useAtom(sidebarCollapsedAtom);
   const [marketplaceCategory, setMarketplaceCategory] = useAtom(marketplaceCategoryAtom);
@@ -348,7 +353,12 @@ function App() {
             )}
             {view.type === "sub-agent-detail" && <SubAgentDetailView agent={view.agent} onBack={() => navigate({ type: "sub-agents" })} />}
             {view.type === "output-styles" && <OutputStylesView />}
-            {view.type === "statusline" && <StatuslineView marketplaceItems={catalog?.statuslines || []} />}
+            {view.type === "statusline" && (
+              <StatuslineView
+                marketplaceItems={catalog?.statuslines || []}
+                onBrowseMore={() => navigate({ type: "marketplace", category: "statuslines" })}
+              />
+            )}
           </FeaturesLayout>
         )}
         {(view.type === "kb-distill" || view.type === "kb-distill-detail" || view.type === "kb-reference" || view.type === "kb-reference-doc") && (
@@ -671,7 +681,12 @@ function App() {
             )}
             {view.type === "sub-agent-detail" && <SubAgentDetailView agent={view.agent} onBack={() => navigate({ type: "sub-agents" })} />}
             {view.type === "output-styles" && <OutputStylesView />}
-            {view.type === "statusline" && <StatuslineView marketplaceItems={catalog?.statuslines || []} />}
+            {view.type === "statusline" && (
+              <StatuslineView
+                marketplaceItems={catalog?.statuslines || []}
+                onBrowseMore={() => navigate({ type: "marketplace", category: "statuslines" })}
+              />
+            )}
           </FeaturesLayout>
         )}
 

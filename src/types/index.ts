@@ -187,6 +187,7 @@ export type TemplateCategory =
   | "skills"
   | "hooks"
   | "agents"
+  | "statuslines"
   | "output-styles";
 
 // ============================================================================
@@ -195,7 +196,7 @@ export type TemplateCategory =
 
 export type View =
   | { type: "home" }
-  | { type: "workspace" }
+  | { type: "workspace"; projectId?: string; featureId?: string; mode?: "features" | "dashboard" | "home" }
   | { type: "features" }
   | { type: "chat-projects" }
   | { type: "chat-sessions"; projectId: string; projectPath: string }

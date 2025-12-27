@@ -14,7 +14,8 @@ import {
 import { sortableKeyboardCoordinates, SortableContext, horizontalListSortingStrategy } from "@dnd-kit/sortable";
 import { ArchiveIcon, PlusIcon } from "@radix-ui/react-icons";
 import { open } from "@tauri-apps/plugin-dialog";
-import { workspaceDataAtom, collapsedProjectGroupsAtom, viewAtom } from "@/store";
+import { workspaceDataAtom, collapsedProjectGroupsAtom } from "@/store";
+import { useNavigate } from "@/hooks";
 import { invoke } from "@tauri-apps/api/core";
 import {
   DropdownMenu,
@@ -33,7 +34,7 @@ type DragItem =
 export function GlobalFeatureTabs() {
   const [workspace, setWorkspace] = useAtom(workspaceDataAtom);
   const [collapsedGroups] = useAtom(collapsedProjectGroupsAtom);
-  const [, setView] = useAtom(viewAtom);
+  const navigate = useNavigate();
   const [activeDragItem, setActiveDragItem] = useState<DragItem | null>(null);
 
   const sensors = useSensors(
@@ -51,7 +52,8 @@ export function GlobalFeatureTabs() {
   const archivedProjects = workspace.projects.filter(p => p.archived);
 
   const handleUnarchiveProject = async (id: string) => {
-    setView({ type: "workspace" });
+    const proj = workspace.projects.find(p => p.id === id);
+    navigate({ type: "workspace", projectId: id, featureId: proj?.active_feature_id, mode: proj?.view_mode || "features" });
 
     const newProjects = workspace.projects.map((p) =>
       p.id === id ? { ...p, archived: false } : p
@@ -78,7 +80,7 @@ export function GlobalFeatureTabs() {
           path: selected,
         });
 
-        setView({ type: "workspace" });
+        navigate({ type: "workspace", projectId: project.id, mode: "dashboard" });
 
         const newWorkspace: WorkspaceData = {
           ...workspace,
