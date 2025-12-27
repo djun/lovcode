@@ -37,25 +37,25 @@ export function ProjectList({ onSelectProject, onSelectSession, onSelectChat }: 
   const [indexBuilt, setIndexBuilt] = useState(false);
 
   useEffect(() => {
-    if (viewMode === "projects" && projects === null && !loadingProjects) {
+    if (projects === null && !loadingProjects) {
       setLoadingProjects(true);
       invoke<Project[]>("list_projects")
         .then(setProjects)
         .finally(() => setLoadingProjects(false));
     }
-  }, [viewMode, projects, loadingProjects]);
+  }, [projects, loadingProjects]);
 
   useEffect(() => {
-    if (viewMode === "sessions" && allSessions === null && !loadingSessions) {
+    if (allSessions === null && !loadingSessions) {
       setLoadingSessions(true);
       invoke<Session[]>("list_all_sessions")
         .then(setAllSessions)
         .finally(() => setLoadingSessions(false));
     }
-  }, [viewMode, allSessions, loadingSessions]);
+  }, [allSessions, loadingSessions]);
 
   useEffect(() => {
-    if (viewMode === "chats" && allChats === null && !loadingChats) {
+    if (allChats === null && !loadingChats) {
       setLoadingChats(true);
       invoke<ChatsResponse>("list_all_chats", { limit: CHATS_PAGE_SIZE })
         .then((res) => {
@@ -64,7 +64,7 @@ export function ProjectList({ onSelectProject, onSelectSession, onSelectChat }: 
         })
         .finally(() => setLoadingChats(false));
     }
-  }, [viewMode, allChats, loadingChats]);
+  }, [allChats, loadingChats]);
 
   const loadMoreChats = useCallback(async () => {
     if (loadingMoreChats || !allChats || allChats.length >= totalChats) return;
@@ -97,10 +97,10 @@ export function ProjectList({ onSelectProject, onSelectSession, onSelectChat }: 
   };
 
   useEffect(() => {
-    if (viewMode === "chats" && !indexBuilt && !indexBuilding) {
+    if (!indexBuilt && !indexBuilding) {
       handleBuildIndex();
     }
-  }, [viewMode, indexBuilt, indexBuilding]);
+  }, [indexBuilt, indexBuilding]);
 
   useEffect(() => {
     if (viewMode !== "chats") return;
@@ -162,13 +162,9 @@ export function ProjectList({ onSelectProject, onSelectSession, onSelectChat }: 
   return (
     <div className="px-6 py-8">
       <header className="mb-6">
-        <h1 className="font-serif text-3xl font-semibold text-ink">History</h1>
+        <h1 className="font-serif text-3xl font-semibold text-ink">Vibe Coding Chat History</h1>
         <p className="text-muted-foreground mt-1">
-          {viewMode === "projects"
-            ? `${(projects || []).length} projects with Claude Code history`
-            : viewMode === "sessions"
-              ? `${filteredSessions.length} sessions${hideEmptySessions ? ` (${(allSessions || []).length - filteredSessions.length} hidden)` : ""}`
-              : `${(allChats || []).length} / ${totalChats} messages${indexBuilt ? " · Index ready" : indexBuilding ? " · Building index..." : ""}`}
+          {(projects || []).length} projects · {(allSessions || []).length} sessions · {totalChats} chats
         </p>
       </header>
 

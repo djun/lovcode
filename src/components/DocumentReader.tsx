@@ -60,7 +60,7 @@ const warmAcademicTheme: { [key: string]: CSSProperties } = {
   variable: { color: "#CC785C" },
 };
 // Lucide icons (no Radix equivalent)
-import { PanelLeftClose, PanelLeft, PanelRightClose, PanelRight } from "lucide-react";
+import { PanelLeftClose, PanelLeft, PanelRightClose, PanelRight, Maximize2, Minimize2 } from "lucide-react";
 // Radix icons
 import { ChevronLeftIcon, ChevronDownIcon, CopyIcon, CheckIcon } from "@radix-ui/react-icons";
 import { startCase } from "lodash-es";
@@ -723,6 +723,7 @@ export function DocumentReader({
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [activeHeading, setActiveHeading] = useState<string | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const headingRefs = useRef<Map<string, HTMLElement>>(new Map());
 
   const progress = useReadingProgress(scrollContainerRef);
@@ -845,6 +846,7 @@ export function DocumentReader({
 
   const toggleLeftPanel = useCallback(() => setLeftPanelOpen((v) => !v), []);
   const toggleRightPanel = useCallback(() => setRightPanelOpen((v) => !v), []);
+  const toggleFullscreen = useCallback(() => setIsFullscreen((v) => !v), []);
 
   const handleHeadingClick = useCallback((id: string) => {
     const element = headingRefs.current.get(id);
@@ -879,12 +881,21 @@ export function DocumentReader({
   useKeyboardNavigation(handlePrev, handleNext, onBack, toggleLeftPanel, toggleRightPanel);
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-background">
+    <div className={`flex flex-col bg-background ${isFullscreen ? "fixed inset-0 z-50" : "h-full"}`}>
       {/* Top bar */}
       <header
         data-tauri-drag-region
         className="shrink-0 h-[52px] border-b border-border bg-background flex items-center px-4 gap-3"
       >
+        {/* Fullscreen toggle */}
+        <button
+          onClick={toggleFullscreen}
+          className="p-1.5 rounded-lg hover:bg-card-alt transition-colors"
+          title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+        >
+          {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+        </button>
+
         {/* Left panel toggle (when closed) */}
         {!leftPanelOpen && (
           <button
