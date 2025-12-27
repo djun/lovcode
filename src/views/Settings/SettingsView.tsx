@@ -13,6 +13,7 @@ import {
   MinusCircledIcon,
   TrashIcon,
   RocketIcon,
+  ExternalLinkIcon,
 } from "@radix-ui/react-icons";
 import { Button } from "../../components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../components/ui/tooltip";
@@ -198,18 +199,28 @@ export function SettingsView({
       label: "ZenMux",
       description: "Route via ZenMux to unlock more model options",
       templateName: "zenmux-anthropic-proxy",
+      docsUrl: "https://docs.zenmux.ai/best-practices/claude-code.html",
     },
     {
       key: "univibe",
       label: "UniVibe",
       description: "UniVibe proxy service, supports Claude Code / Codex / Cursor",
       templateName: "univibe-anthropic-proxy",
+      docsUrl: "https://www.univibe.cc/console/docs/claudecode",
     },
     {
       key: "qiniu",
       label: "Qiniu Cloud",
       description: "Use Qiniu Cloud AI gateway for Anthropic API",
       templateName: "qiniu-anthropic-proxy",
+      docsUrl: "https://developer.qiniu.com/aitokenapi/13085/claude-code-configuration-instructions",
+    },
+    {
+      key: "modelgate",
+      label: "ModelGate",
+      description: "ModelGate API gateway for Claude",
+      templateName: "modelgate-anthropic-proxy",
+      docsUrl: "https://docs.modelgate.net/guide/tools/claude-code.html",
     },
   ];
 
@@ -255,6 +266,13 @@ export function SettingsView({
       description: "UniVibe proxy service, supports Claude Code / Codex / Cursor.",
       downloads: null,
       content: JSON.stringify({ env: { ANTHROPIC_AUTH_TOKEN: "cr_xxxxxxxxxxxxxxxxxx" } }, null, 2),
+    },
+    modelgate: {
+      name: "modelgate-anthropic-proxy",
+      path: "fallback/modelgate-anthropic-proxy.json",
+      description: "ModelGate API gateway for Claude.",
+      downloads: null,
+      content: JSON.stringify({ env: { ANTHROPIC_AUTH_TOKEN: "your_modelgate_api_key" } }, null, 2),
     },
   };
 
@@ -343,9 +361,13 @@ export function SettingsView({
 
       setTestMissingKeys((prev) => ({ ...prev, [presetKey]: [] }));
 
-      if (presetKey === "univibe") {
+      if (presetKey === "univibe" || presetKey === "modelgate") {
         const authToken = (envSource.ANTHROPIC_AUTH_TOKEN || "").trim();
-        const baseUrl = envSource.ANTHROPIC_BASE_URL || "https://api.univibe.cc/anthropic";
+        const defaultBaseUrl = presetKey === "univibe"
+          ? "https://api.univibe.cc/anthropic"
+          : "https://api.modelgate.net";
+        const baseUrl = envSource.ANTHROPIC_BASE_URL || defaultBaseUrl;
+        const label = presetKey === "univibe" ? "UniVibe" : "ModelGate";
 
         try {
           const result = await invoke<{ ok: boolean; code: number; stdout: string; stderr: string }>("test_claude_cli", {
@@ -357,13 +379,13 @@ export function SettingsView({
             setTestStatus((prev) => ({ ...prev, [presetKey]: "error" }));
             setTestMessage((prev) => ({
               ...prev,
-              [presetKey]: `UniVibe test failed (${result.code}): ${result.stderr || result.stdout || "No output"}`,
+              [presetKey]: `${label} test failed (${result.code}): ${result.stderr || result.stdout || "No output"}`,
             }));
             return;
           }
         } catch (e) {
           setTestStatus((prev) => ({ ...prev, [presetKey]: "error" }));
-          setTestMessage((prev) => ({ ...prev, [presetKey]: `UniVibe test error: ${String(e)}` }));
+          setTestMessage((prev) => ({ ...prev, [presetKey]: `${label} test error: ${String(e)}` }));
           return;
         }
       }
@@ -422,6 +444,10 @@ export function SettingsView({
     qiniu: { ANTHROPIC_BASE_URL: "https://api.qnaigc.com" },
     univibe: {
       ANTHROPIC_BASE_URL: "https://api.univibe.cc/anthropic",
+      ANTHROPIC_API_KEY: "",
+    },
+    modelgate: {
+      ANTHROPIC_BASE_URL: "https://api.modelgate.net",
       ANTHROPIC_API_KEY: "",
     },
   };
@@ -848,7 +874,21 @@ export function SettingsView({
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1 truncate">{preset.description}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <p className="text-xs text-muted-foreground truncate">{preset.description}</p>
+                      {preset.docsUrl && (
+                        <a
+                          href={preset.docsUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-muted-foreground hover:text-primary shrink-0"
+                          title="Documentation"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <ExternalLinkIcon className="w-3 h-3" />
+                        </a>
+                      )}
+                    </div>
                     {providerModels[preset.key] && (
                       <select
                         className="mt-2 text-xs px-2 py-1 rounded bg-canvas border border-border text-ink w-full max-w-[200px]"
