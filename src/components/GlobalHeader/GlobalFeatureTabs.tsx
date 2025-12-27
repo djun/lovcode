@@ -13,7 +13,7 @@ import {
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { ArchiveIcon, PlusIcon } from "@radix-ui/react-icons";
 import { open } from "@tauri-apps/plugin-dialog";
-import { workspaceDataAtom, collapsedProjectGroupsAtom } from "@/store";
+import { workspaceDataAtom, collapsedProjectGroupsAtom, viewAtom } from "@/store";
 import { invoke } from "@tauri-apps/api/core";
 import {
   DropdownMenu,
@@ -28,6 +28,7 @@ import type { Feature, WorkspaceData, WorkspaceProject } from "@/views/Workspace
 export function GlobalFeatureTabs() {
   const [workspace, setWorkspace] = useAtom(workspaceDataAtom);
   const [collapsedGroups] = useAtom(collapsedProjectGroupsAtom);
+  const [, setView] = useAtom(viewAtom);
   const [activeFeature, setActiveFeature] = useState<{ feature: Feature; projectId: string } | null>(null);
 
   const sensors = useSensors(
@@ -45,6 +46,8 @@ export function GlobalFeatureTabs() {
   const archivedProjects = workspace.projects.filter(p => p.archived);
 
   const handleUnarchiveProject = async (id: string) => {
+    setView({ type: "workspace" });
+
     const newProjects = workspace.projects.map((p) =>
       p.id === id ? { ...p, archived: false } : p
     );
@@ -69,6 +72,8 @@ export function GlobalFeatureTabs() {
         const project = await invoke<WorkspaceProject>("workspace_add_project", {
           path: selected,
         });
+
+        setView({ type: "workspace" });
 
         const newWorkspace: WorkspaceData = {
           ...workspace,

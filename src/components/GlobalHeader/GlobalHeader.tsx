@@ -8,7 +8,7 @@ import {
 } from "@radix-ui/react-icons";
 import { Avatar, AvatarImage, AvatarFallback } from "../ui/avatar";
 import { Popover, PopoverTrigger, PopoverContent } from "../ui/popover";
-import { sidebarCollapsedAtom, profileAtom, viewAtom, workspaceDataAtom, primaryFeatureAtom } from "@/store";
+import { sidebarCollapsedAtom, profileAtom, workspaceDataAtom, primaryFeatureAtom } from "@/store";
 import { GlobalFeatureTabs } from "./GlobalFeatureTabs";
 import type { View, FeatureType } from "@/types";
 
@@ -37,12 +37,11 @@ export function GlobalHeader({
 }: GlobalHeaderProps) {
   const [sidebarCollapsed] = useAtom(sidebarCollapsedAtom);
   const [profile] = useAtom(profileAtom);
-  const [view] = useAtom(viewAtom);
   const [workspace] = useAtom(workspaceDataAtom);
   const [primaryFeature, setPrimaryFeature] = useAtom(primaryFeatureAtom);
 
-  // Only show feature tabs when in workspace view
-  const showFeatureTabs = view.type === "workspace" && workspace;
+  // Always show feature tabs when workspace data is available
+  const showFeatureTabs = !!workspace;
 
   // Main nav features - use primaryFeature for active state (not affected by profile menu clicks)
   const mainNavFeatures = ["workspace", "chat", "kb-distill", "kb-reference"] as const;
@@ -111,7 +110,7 @@ export function GlobalHeader({
               <ChevronRightIcon className="w-5 h-5" />
             </button>
           </div>
-          {/* Feature Tabs - shown when in workspace view */}
+          {/* Feature Tabs */}
           {showFeatureTabs && (
             <>
               <div className="h-4 border-l border-border mx-2" />

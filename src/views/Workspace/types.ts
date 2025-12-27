@@ -29,6 +29,8 @@ export interface Feature {
   /** Immutable sequence number (like database auto-increment ID) */
   seq: number;
   name: string;
+  /** Optional description (markdown) - e.g., background, goals */
+  description?: string;
   status: FeatureStatus;
   pinned?: boolean;
   archived?: boolean;

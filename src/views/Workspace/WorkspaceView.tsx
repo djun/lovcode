@@ -201,6 +201,30 @@ export function WorkspaceView() {
     [activeProject, workspace, saveWorkspace]
   );
 
+  // Unarchive feature from dashboard
+  const handleUnarchiveFeature = useCallback(
+    (featureId: string) => {
+      if (!activeProject || !workspace) return;
+
+      const newProjects = workspace.projects.map((p) => {
+        if (p.id !== activeProject.id) return p;
+        return {
+          ...p,
+          features: p.features.map((f) =>
+            f.id === featureId ? { ...f, archived: false } : f
+          ),
+          active_feature_id: featureId,
+          view_mode: "features" as const,
+        };
+      });
+      saveWorkspace({
+        ...workspace,
+        projects: newProjects,
+      });
+    },
+    [activeProject, workspace, saveWorkspace]
+  );
+
   // Layout tree utilities
   const splitLayoutNode = useCallback(
     (node: LayoutNode, targetPanelId: string, direction: "horizontal" | "vertical", newPanelId: string): LayoutNode => {
@@ -852,6 +876,7 @@ export function WorkspaceView() {
             onFeatureClick={handleDashboardFeatureClick}
             onFeatureStatusChange={handleDashboardFeatureStatusChange}
             onAddFeature={() => handleAddFeature(activeProject.id)}
+            onUnarchiveFeature={handleUnarchiveFeature}
           />
         ) : activeProject.view_mode === "home" ? (
           <ProjectHomeView

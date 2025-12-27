@@ -73,6 +73,9 @@ pub struct Feature {
     #[serde(default)]
     pub seq: u32,
     pub name: String,
+    /// Optional description (markdown) - e.g., background, goals
+    #[serde(default)]
+    pub description: Option<String>,
     pub status: FeatureStatus,
     #[serde(default)]
     pub pinned: Option<bool>,
@@ -225,7 +228,7 @@ pub fn set_active_project(id: &str) -> Result<(), String> {
 }
 
 /// Create a new feature in a project
-pub fn create_feature(project_id: &str, name: String) -> Result<Feature, String> {
+pub fn create_feature(project_id: &str, name: String, description: Option<String>) -> Result<Feature, String> {
     let mut data = load_workspace()?;
 
     let project = data
@@ -238,6 +241,7 @@ pub fn create_feature(project_id: &str, name: String) -> Result<Feature, String>
         id: uuid::Uuid::new_v4().to_string(),
         seq: 0, // Will be set by frontend using feature_counter
         name,
+        description,
         status: FeatureStatus::Pending,
         pinned: None,
         archived: None,

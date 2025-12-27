@@ -2118,15 +2118,6 @@ fn list_reference_docs(source: String) -> Result<Vec<ReferenceDoc>, String> {
 }
 
 #[tauri::command]
-fn get_reference_doc(path: String) -> Result<String, String> {
-    let doc_path = PathBuf::from(&path);
-    if !doc_path.exists() {
-        return Err(format!("Document not found: {}", path));
-    }
-    fs::read_to_string(&doc_path).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
 fn list_distill_documents() -> Result<Vec<DistillDocument>, String> {
     let distill_dir = get_distill_dir();
     let index_path = distill_dir.join("index.jsonl");
@@ -2156,18 +2147,6 @@ fn list_distill_documents() -> Result<Vec<DistillDocument>, String> {
     // Sort by date descending (newest first)
     docs.sort_by(|a, b| b.date.cmp(&a.date));
     Ok(docs)
-}
-
-#[tauri::command]
-fn get_distill_document(file: String) -> Result<String, String> {
-    let distill_dir = get_distill_dir();
-    let doc_path = distill_dir.join(&file);
-
-    if !doc_path.exists() {
-        return Err(format!("Document not found: {}", file));
-    }
-
-    fs::read_to_string(&doc_path).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -2219,17 +2198,6 @@ fn find_session_project(session_id: String) -> Result<Option<Session>, String> {
 }
 
 #[tauri::command]
-fn get_distill_command_file() -> Result<String, String> {
-    let cmd_path = get_claude_dir().join("commands/distill.md");
-
-    if !cmd_path.exists() {
-        return Err("distill.md command file not found".to_string());
-    }
-
-    fs::read_to_string(&cmd_path).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
 fn get_distill_watch_enabled() -> bool {
     DISTILL_WATCH_ENABLED.load(std::sync::atomic::Ordering::Relaxed)
 }
@@ -2267,13 +2235,20 @@ const PLUGIN_SOURCES: &[PluginSource] = &[
         name: "Lovstudio",
         icon: "💜",
         priority: 2,
-        path: "../lovstudio-plugins-official", // External path
+        path: "marketplace/lovstudio",
+    },
+    PluginSource {
+        id: "lovstudio-plugins",
+        name: "Lovstudio Plugins",
+        icon: "💜",
+        priority: 3,
+        path: "../lovstudio-plugins-official",
     },
     PluginSource {
         id: "community",
         name: "Community",
         icon: "🌍",
-        priority: 3,
+        priority: 4,
         path: "third-parties/claude-code-templates/docs/components.json",
     },
 ];
@@ -2330,6 +2305,7 @@ pub struct TemplatesCatalog {
     pub hooks: Vec<TemplateComponent>,
     pub settings: Vec<TemplateComponent>,
     pub skills: Vec<TemplateComponent>,
+    pub statuslines: Vec<TemplateComponent>,
     #[serde(default)]
     pub sources: Vec<SourceInfo>,
 }
@@ -2755,6 +2731,46 @@ fn load_single_plugin(
         });
     }
 
+    // Scan statuslines/ (.sh files)
+    let statuslines_dir = base_path.join("statuslines");
+    if statuslines_dir.exists() {
+        if let Ok(entries) = fs::read_dir(&statuslines_dir) {
+            for entry in entries.filter_map(|e| e.ok()) {
+                let path = entry.path();
+                if path.extension().map_or(false, |e| e == "sh") {
+                    let name = path
+                        .file_stem()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string();
+                    let content = fs::read_to_string(&path).ok();
+
+                    // Parse description from script header comment
+                    let description = content.as_ref().and_then(|c| {
+                        c.lines()
+                            .find(|l| l.starts_with("# Description:"))
+                            .map(|l| l.trim_start_matches("# Description:").trim().to_string())
+                    });
+
+                    components.push(TemplateComponent {
+                        name: name.clone(),
+                        path: format!("statuslines/{}.sh", name),
+                        category: plugin_name.clone(),
+                        component_type: "statusline".to_string(),
+                        description,
+                        downloads: None,
+                        content,
+                        source_id: Some(source.id.to_string()),
+                        source_name: Some(source.name.to_string()),
+                        source_icon: Some(source.icon.to_string()),
+                        plugin_name: Some(plugin_name.clone()),
+                        author: author.clone(),
+                    });
+                }
+            }
+        }
+    }
+
     components
 }
 
@@ -2787,6 +2803,7 @@ fn get_templates_catalog(app_handle: tauri::AppHandle) -> Result<TemplatesCatalo
     let mut hooks = Vec::new();
     let mut settings = Vec::new();
     let mut skills = Vec::new();
+    let mut statuslines = Vec::new();
 
     for comp in all_components {
         match comp.component_type.as_str() {
@@ -2796,6 +2813,7 @@ fn get_templates_catalog(app_handle: tauri::AppHandle) -> Result<TemplatesCatalo
             "hook" => hooks.push(comp),
             "setting" => settings.push(comp),
             "skill" => skills.push(comp),
+            "statusline" => statuslines.push(comp),
             _ => {} // Ignore unknown types
         }
     }
@@ -2818,6 +2836,7 @@ fn get_templates_catalog(app_handle: tauri::AppHandle) -> Result<TemplatesCatalo
         hooks,
         settings,
         skills,
+        statuslines,
         sources,
     })
 }
@@ -3004,6 +3023,62 @@ fn install_setting_template(config: String) -> Result<String, String> {
     fs::write(&settings_path, output).map_err(|e| e.to_string())?;
 
     Ok("Settings updated".to_string())
+}
+
+#[tauri::command]
+fn update_settings_statusline(statusline: serde_json::Value) -> Result<(), String> {
+    let settings_path = get_claude_dir().join("settings.json");
+    let mut settings: serde_json::Value = if settings_path.exists() {
+        let content = fs::read_to_string(&settings_path).map_err(|e| e.to_string())?;
+        serde_json::from_str(&content).map_err(|e| e.to_string())?
+    } else {
+        serde_json::json!({})
+    };
+
+    settings["statusLine"] = statusline;
+
+    let output = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    fs::write(&settings_path, output).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn remove_settings_statusline() -> Result<(), String> {
+    let settings_path = get_claude_dir().join("settings.json");
+    if !settings_path.exists() {
+        return Ok(());
+    }
+
+    let content = fs::read_to_string(&settings_path).map_err(|e| e.to_string())?;
+    let mut settings: serde_json::Value =
+        serde_json::from_str(&content).map_err(|e| e.to_string())?;
+
+    if let Some(obj) = settings.as_object_mut() {
+        obj.remove("statusLine");
+    }
+
+    let output = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    fs::write(&settings_path, output).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn write_statusline_script(content: String) -> Result<String, String> {
+    let script_path = get_claude_dir().join("statusline.sh");
+    fs::write(&script_path, &content).map_err(|e| e.to_string())?;
+
+    // Make executable on Unix
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&script_path)
+            .map_err(|e| e.to_string())?
+            .permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&script_path, perms).map_err(|e| e.to_string())?;
+    }
+
+    Ok(script_path.to_string_lossy().to_string())
 }
 
 // ============================================================================
@@ -4145,8 +4220,8 @@ fn workspace_set_active_project(id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn workspace_create_feature(project_id: String, name: String) -> Result<workspace_store::Feature, String> {
-    workspace_store::create_feature(&project_id, name)
+fn workspace_create_feature(project_id: String, name: String, description: Option<String>) -> Result<workspace_store::Feature, String> {
+    workspace_store::create_feature(&project_id, name, description)
 }
 
 #[tauri::command]
@@ -4614,6 +4689,9 @@ pub fn run() {
             check_mcp_installed,
             install_hook_template,
             install_setting_template,
+            update_settings_statusline,
+            remove_settings_statusline,
+            write_statusline_script,
             open_in_editor,
             open_session_in_editor,
             reveal_session_file,
@@ -4633,14 +4711,11 @@ pub fn run() {
             test_openai_connection,
             test_claude_cli,
             list_distill_documents,
-            get_distill_document,
             find_session_project,
-            get_distill_command_file,
             get_distill_watch_enabled,
             set_distill_watch_enabled,
             list_reference_sources,
             list_reference_docs,
-            get_reference_doc,
             get_claude_code_version_info,
             install_claude_code_version,
             set_claude_code_autoupdater,

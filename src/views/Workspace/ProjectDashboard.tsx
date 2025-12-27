@@ -5,7 +5,14 @@ import {
   ExclamationTriangleIcon,
   TimerIcon,
   PlusIcon,
+  ArchiveIcon,
 } from "@radix-ui/react-icons";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { KanbanBoard } from "./KanbanBoard";
 import { ProjectLogo } from "./ProjectLogo";
 import type { WorkspaceProject, FeatureStatus } from "./types";
@@ -15,6 +22,7 @@ interface ProjectDashboardProps {
   onFeatureClick: (featureId: string) => void;
   onFeatureStatusChange: (featureId: string, status: FeatureStatus) => void;
   onAddFeature: () => void;
+  onUnarchiveFeature: (featureId: string) => void;
 }
 
 function StatCard({
@@ -44,6 +52,7 @@ export function ProjectDashboard({
   onFeatureClick,
   onFeatureStatusChange,
   onAddFeature,
+  onUnarchiveFeature,
 }: ProjectDashboardProps) {
   const stats = useMemo(() => {
     const activeFeatures = project.features.filter((f) => !f.archived);
@@ -54,6 +63,10 @@ export function ProjectDashboard({
       completed: activeFeatures.filter((f) => f.status === "completed").length,
       total: activeFeatures.length,
     };
+  }, [project.features]);
+
+  const archivedFeatures = useMemo(() => {
+    return project.features.filter((f) => f.archived);
   }, [project.features]);
 
   const recentFeatures = useMemo(() => {
@@ -81,13 +94,37 @@ export function ProjectDashboard({
               </p>
             </div>
           </div>
-          <button
-            onClick={onAddFeature}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
-          >
-            <PlusIcon className="w-4 h-4" />
-            New Feature
-          </button>
+          <div className="flex items-center gap-2">
+            {archivedFeatures.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-muted-foreground hover:text-ink hover:bg-card-alt rounded-lg transition-colors">
+                  <ArchiveIcon className="w-4 h-4" />
+                  <span>Archived ({archivedFeatures.length})</span>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="min-w-[200px]">
+                  {archivedFeatures.map((feature) => (
+                    <DropdownMenuItem
+                      key={feature.id}
+                      onClick={() => onUnarchiveFeature(feature.id)}
+                      className="cursor-pointer"
+                    >
+                      <span className="truncate">
+                        {feature.seq > 0 && <span className="text-muted-foreground">#{feature.seq} </span>}
+                        {feature.name}
+                      </span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+            <button
+              onClick={onAddFeature}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+            >
+              <PlusIcon className="w-4 h-4" />
+              New Feature
+            </button>
+          </div>
         </div>
       </div>
 

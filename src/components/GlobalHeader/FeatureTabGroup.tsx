@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useAtom } from "jotai";
 import { PlusIcon, ArchiveIcon, DashboardIcon } from "@radix-ui/react-icons";
 import { SortableContext, horizontalListSortingStrategy } from "@dnd-kit/sortable";
-import { workspaceDataAtom, collapsedProjectGroupsAtom } from "@/store";
+import { workspaceDataAtom, collapsedProjectGroupsAtom, viewAtom } from "@/store";
 import { invoke } from "@tauri-apps/api/core";
 import {
   ContextMenu,
@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/context-menu";
 import { ProjectLogo } from "@/views/Workspace/ProjectLogo";
 import { SortableFeatureTab } from "./FeatureTab";
+import { CreateFeatureDialog } from "./CreateFeatureDialog";
 import type { WorkspaceProject, Feature, WorkspaceData } from "@/views/Workspace/types";
 
 interface FeatureTabGroupProps {
@@ -33,7 +34,10 @@ export function FeatureTabGroup({
 }: FeatureTabGroupProps) {
   const [workspace, setWorkspace] = useAtom(workspaceDataAtom);
   const [collapsedGroups, setCollapsedGroups] = useAtom(collapsedProjectGroupsAtom);
+  const [, setView] = useAtom(viewAtom);
   const [hasLogo, setHasLogo] = useState(true); // Default true to hide name initially
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [defaultFeatureName, setDefaultFeatureName] = useState("");
 
   useEffect(() => {
     invoke<string | null>("get_project_logo", { projectPath: project.path })
@@ -56,7 +60,11 @@ export function FeatureTabGroup({
   };
 
   const handleSelectProject = async () => {
-    if (!workspace || workspace.active_project_id === project.id) return;
+    if (!workspace) return;
+
+    setView({ type: "workspace" });
+
+    if (workspace.active_project_id === project.id) return;
 
     const newWorkspace: WorkspaceData = {
       ...workspace,
@@ -68,6 +76,8 @@ export function FeatureTabGroup({
 
   const handleOpenDashboard = async () => {
     if (!workspace) return;
+
+    setView({ type: "workspace" });
 
     const newProjects = workspace.projects.map((p) =>
       p.id === project.id ? { ...p, view_mode: "dashboard" as const } : p
@@ -103,6 +113,8 @@ export function FeatureTabGroup({
   const handleUnarchiveFeature = async (featureId: string) => {
     if (!workspace) return;
 
+    setView({ type: "workspace" });
+
     const newProjects = workspace.projects.map((p) => {
       if (p.id !== project.id) return p;
       return {
@@ -123,24 +135,34 @@ export function FeatureTabGroup({
     await invoke("workspace_save", { data: newWorkspace });
   };
 
-  const handleAddFeature = async (e?: React.MouseEvent) => {
+  const handleAddFeature = (e?: React.MouseEvent) => {
     e?.stopPropagation();
     if (!workspace) return;
 
     const counter = (project.feature_counter ?? 0) + 1;
-    const name = `#${counter}`;
+    setDefaultFeatureName(`#${counter}`);
+    setShowCreateDialog(true);
+  };
+
+  const handleCreateFeature = async (name: string, description: string) => {
+    if (!workspace) return;
+
+    setView({ type: "workspace" });
+
+    const counter = (project.feature_counter ?? 0) + 1;
 
     try {
       const feature = await invoke<Feature>("workspace_create_feature", {
         projectId: project.id,
         name,
+        description: description || undefined,
       });
 
       const newProjects = workspace.projects.map((p) =>
         p.id === project.id
           ? {
               ...p,
-              features: [...p.features, { ...feature, seq: counter }],
+              features: [...p.features, { ...feature, seq: counter, description: description || undefined }],
               active_feature_id: feature.id,
               feature_counter: counter,
               view_mode: "features" as const,
@@ -163,6 +185,8 @@ export function FeatureTabGroup({
 
   const handleSelectFeature = async (featureId: string) => {
     if (!workspace) return;
+
+    setView({ type: "workspace" });
 
     const newProjects = workspace.projects.map((p) =>
       p.id === project.id
@@ -225,95 +249,111 @@ export function FeatureTabGroup({
   if (isCollapsed) {
     // Collapsed view: just project name with count
     return (
-      <div className="flex items-center flex-shrink-0">
-        <ContextMenu>
-          <ContextMenuTrigger asChild>
-            <button
-              onClick={features.length > 0 ? toggleCollapsed : handleSelectProject}
-              onPointerDown={(e) => e.stopPropagation()}
-              className={`flex items-center gap-1.5 px-2 py-1 rounded-lg transition-colors ${
-                isActiveProject ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-ink hover:bg-card-alt"
-              }`}
-              title={projectDisplayName}
-            >
-              <ProjectLogo projectPath={project.path} size="sm" />
-              {!hasLogo && (
-                <span className="text-xs font-medium truncate max-w-[80px]">{projectDisplayName}</span>
-              )}
-              {features.length > 0 && (
-                <span className="text-xs text-muted-foreground">{features.length}</span>
-              )}
-            </button>
-          </ContextMenuTrigger>
-          {contextMenuContent}
-        </ContextMenu>
-        <div className="h-4 border-l border-border mx-1" />
-      </div>
+      <>
+        <div className="flex items-center flex-shrink-0">
+          <ContextMenu>
+            <ContextMenuTrigger asChild>
+              <button
+                onClick={features.length > 0 ? toggleCollapsed : handleSelectProject}
+                onPointerDown={(e) => e.stopPropagation()}
+                className={`flex items-center gap-1.5 px-2 py-1 rounded-lg transition-colors ${
+                  isActiveProject ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-ink hover:bg-card-alt"
+                }`}
+                title={projectDisplayName}
+              >
+                <ProjectLogo projectPath={project.path} size="sm" />
+                {!hasLogo && (
+                  <span className="text-xs font-medium truncate max-w-[80px]">{projectDisplayName}</span>
+                )}
+                {features.length > 0 && (
+                  <span className="text-xs text-muted-foreground">{features.length}</span>
+                )}
+              </button>
+            </ContextMenuTrigger>
+            {contextMenuContent}
+          </ContextMenu>
+          <div className="h-4 border-l border-border mx-1" />
+        </div>
+        <CreateFeatureDialog
+          open={showCreateDialog}
+          onOpenChange={setShowCreateDialog}
+          defaultName={defaultFeatureName}
+          onSubmit={handleCreateFeature}
+        />
+      </>
     );
   }
 
   // Expanded view: project header + tabs with underline indicator
   return (
-    <div className="flex items-center flex-shrink-0">
-      <div
-        className={`relative flex items-center gap-0.5 px-1 pb-1 after:absolute after:bottom-0 after:left-1 after:right-1 after:h-0.5 after:rounded-full ${
-          isActiveProject ? "after:bg-primary" : "after:bg-border"
-        }`}
-      >
-        {/* Project header with context menu */}
-        <ContextMenu>
-          <ContextMenuTrigger asChild>
-            <button
-              onClick={features.length > 0 ? toggleCollapsed : handleSelectProject}
-              onPointerDown={(e) => e.stopPropagation()}
-              className={`flex items-center px-1 py-1 rounded transition-colors flex-shrink-0 ${
-                isActiveProject ? "text-primary" : "text-muted-foreground hover:text-ink"
-              }`}
-              title={projectDisplayName}
+    <>
+      <div className="flex items-center flex-shrink-0">
+        <div
+          className={`relative flex items-center gap-0.5 px-1 pb-1 after:absolute after:bottom-0 after:left-1 after:right-1 after:h-0.5 after:rounded-full ${
+            isActiveProject ? "after:bg-primary" : "after:bg-border"
+          }`}
+        >
+          {/* Project header with context menu */}
+          <ContextMenu>
+            <ContextMenuTrigger asChild>
+              <button
+                onClick={features.length > 0 ? toggleCollapsed : handleSelectProject}
+                onPointerDown={(e) => e.stopPropagation()}
+                className={`flex items-center px-1 py-1 rounded transition-colors flex-shrink-0 ${
+                  isActiveProject ? "text-primary" : "text-muted-foreground hover:text-ink"
+                }`}
+                title={projectDisplayName}
+              >
+                <ProjectLogo projectPath={project.path} size="sm" />
+              </button>
+            </ContextMenuTrigger>
+            {contextMenuContent}
+          </ContextMenu>
+
+          {/* Feature tabs */}
+          {features.length > 0 && (
+            <SortableContext
+              items={features.map(f => f.id)}
+              strategy={horizontalListSortingStrategy}
             >
-              <ProjectLogo projectPath={project.path} size="sm" />
+              <div className="flex items-center gap-0.5">
+                {features
+                  .sort((a, b) => (a.pinned === b.pinned ? 0 : a.pinned ? -1 : 1))
+                  .map((feature) => (
+                    <SortableFeatureTab
+                      key={feature.id}
+                      feature={feature}
+                      projectId={project.id}
+                      isActive={isActiveProject && project.active_feature_id === feature.id}
+                      onSelect={() => handleSelectFeature(feature.id)}
+                    />
+                  ))}
+              </div>
+            </SortableContext>
+          )}
+
+          {/* Add button - only show for active project */}
+          {isActiveProject && (
+            <button
+              onClick={handleAddFeature}
+              onPointerDown={(e) => e.stopPropagation()}
+              className="p-1 text-muted-foreground hover:text-ink hover:bg-card-alt rounded transition-colors"
+              title="New Feature"
+            >
+              <PlusIcon className="w-3.5 h-3.5" />
             </button>
-          </ContextMenuTrigger>
-          {contextMenuContent}
-        </ContextMenu>
+          )}
+        </div>
 
-        {/* Feature tabs */}
-        {features.length > 0 && (
-          <SortableContext
-            items={features.map(f => f.id)}
-            strategy={horizontalListSortingStrategy}
-          >
-            <div className="flex items-center gap-0.5">
-              {features
-                .sort((a, b) => (a.pinned === b.pinned ? 0 : a.pinned ? -1 : 1))
-                .map((feature) => (
-                  <SortableFeatureTab
-                    key={feature.id}
-                    feature={feature}
-                    projectId={project.id}
-                    isActive={isActiveProject && project.active_feature_id === feature.id}
-                    onSelect={() => handleSelectFeature(feature.id)}
-                  />
-                ))}
-            </div>
-          </SortableContext>
-        )}
-
-        {/* Add button - only show for active project */}
-        {isActiveProject && (
-          <button
-            onClick={handleAddFeature}
-            onPointerDown={(e) => e.stopPropagation()}
-            className="p-1 text-muted-foreground hover:text-ink hover:bg-card-alt rounded transition-colors"
-            title="New Feature"
-          >
-            <PlusIcon className="w-3.5 h-3.5" />
-          </button>
-        )}
+        {/* Separator between project groups */}
+        <div className="h-4 border-l border-border mx-1" />
       </div>
-
-      {/* Separator between project groups */}
-      <div className="h-4 border-l border-border mx-1" />
-    </div>
+      <CreateFeatureDialog
+        open={showCreateDialog}
+        onOpenChange={setShowCreateDialog}
+        defaultName={defaultFeatureName}
+        onSubmit={handleCreateFeature}
+      />
+    </>
   );
 }
