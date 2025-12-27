@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
 import { useAtom } from "jotai";
 import { fileViewModeAtom } from "@/store";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { Cross2Icon, ExternalLinkIcon, CodeIcon, ReaderIcon, ColumnsIcon } from "@radix-ui/react-icons";
 import Editor, { loader } from "@monaco-editor/react";
 import { MarkdownRenderer } from "../MarkdownRenderer";
+import { isImageFile } from "@/lib/utils";
 
 // Configure Monaco to use local assets (avoid CDN)
 loader.config({ paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs" } });
@@ -70,17 +71,45 @@ interface FileViewerProps {
   onClose: () => void;
 }
 
+interface ImageInfo {
+  width: number;
+  height: number;
+  fileSize: number;
+  modified?: number;
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export function FileViewer({ filePath, onClose }: FileViewerProps) {
   const [content, setContent] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useAtom(fileViewModeAtom);
+  const [imageInfo, setImageInfo] = useState<ImageInfo | null>(null);
 
   const fileName = useMemo(() => filePath.split("/").pop() || filePath, [filePath]);
   const language = useMemo(() => getLanguage(filePath), [filePath]);
   const isMarkdown = language === "markdown";
+  const isImage = useMemo(() => isImageFile(fileName), [fileName]);
+  const imageSrc = useMemo(() => isImage ? convertFileSrc(filePath) : null, [isImage, filePath]);
+  const fileExt = useMemo(() => fileName.split('.').pop()?.toUpperCase() || '', [fileName]);
 
   useEffect(() => {
+    // Load file metadata for images
+    if (isImage) {
+      setLoading(false);
+      invoke<{ size: number; modified?: number }>("get_file_metadata", { path: filePath })
+        .then((meta) => {
+          setImageInfo((prev) => prev ? { ...prev, fileSize: meta.size, modified: meta.modified } : { width: 0, height: 0, fileSize: meta.size, modified: meta.modified });
+        })
+        .catch(console.error);
+      return;
+    }
+
     let cancelled = false;
 
     async function loadFile() {
@@ -107,7 +136,17 @@ export function FileViewer({ filePath, onClose }: FileViewerProps) {
     return () => {
       cancelled = true;
     };
-  }, [filePath]);
+  }, [filePath, isImage]);
+
+  const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget;
+    setImageInfo((prev) => ({
+      width: img.naturalWidth,
+      height: img.naturalHeight,
+      fileSize: prev?.fileSize || 0,
+      modified: prev?.modified,
+    }));
+  };
 
   const handleOpenInEditor = async () => {
     try {
@@ -186,6 +225,38 @@ export function FileViewer({ filePath, onClose }: FileViewerProps) {
         ) : error ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-sm text-destructive">{error}</div>
+          </div>
+        ) : isImage && imageSrc ? (
+          <div className="h-full flex">
+            <div className="flex-1 flex items-center justify-center p-4 bg-[#1e1e1e]">
+              <img
+                src={imageSrc}
+                alt={fileName}
+                className="max-w-full max-h-full object-contain"
+                onLoad={handleImageLoad}
+              />
+            </div>
+            <div className="w-48 border-l border-border bg-canvas-alt p-3 flex-shrink-0">
+              <h3 className="text-xs font-medium text-muted-foreground mb-3">Image Info</h3>
+              <div className="space-y-2 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Format</span>
+                  <p className="text-ink">{fileExt}</p>
+                </div>
+                {imageInfo?.width > 0 && (
+                  <div>
+                    <span className="text-muted-foreground">Dimensions</span>
+                    <p className="text-ink">{imageInfo.width} × {imageInfo.height}</p>
+                  </div>
+                )}
+                {imageInfo?.fileSize > 0 && (
+                  <div>
+                    <span className="text-muted-foreground">Size</span>
+                    <p className="text-ink">{formatFileSize(imageInfo.fileSize)}</p>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         ) : isMarkdown && viewMode === "preview" ? (
           <div className="h-full overflow-auto p-6 bg-background">

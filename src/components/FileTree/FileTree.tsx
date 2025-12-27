@@ -3,6 +3,8 @@ import { useAtom } from "jotai";
 import { invoke } from "@tauri-apps/api/core";
 import { expandedPathsAtom } from "@/store";
 import { ChevronRightIcon, ChevronDownIcon, FileIcon, CopyIcon, ExternalLinkIcon } from "@radix-ui/react-icons";
+import { ImageIcon } from "lucide-react";
+import { isImageFile } from "@/lib/utils";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -113,6 +115,8 @@ function TreeNode({ entry, depth, onFileClick, selectedFile, expandedPaths, onTo
               ) : (
                 <ChevronRightIcon className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
               )
+            ) : isImageFile(entry.name) ? (
+              <ImageIcon className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
             ) : (
               <FileIcon className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
             )}

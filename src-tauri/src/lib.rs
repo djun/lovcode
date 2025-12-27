@@ -4208,6 +4208,36 @@ struct DirEntry {
     is_dir: bool,
 }
 
+/// Get file metadata (size, modified time)
+#[tauri::command]
+fn get_file_metadata(path: String) -> Result<FileMetadata, String> {
+    let file_path = PathBuf::from(&path);
+
+    if !file_path.exists() {
+        return Err(format!("File does not exist: {}", path));
+    }
+
+    let metadata = fs::metadata(&file_path)
+        .map_err(|e| format!("Failed to get metadata: {}", e))?;
+
+    let modified = metadata
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs());
+
+    Ok(FileMetadata {
+        size: metadata.len(),
+        modified,
+    })
+}
+
+#[derive(serde::Serialize)]
+struct FileMetadata {
+    size: u64,
+    modified: Option<u64>,
+}
+
 /// Read file contents
 #[tauri::command]
 fn read_file(path: String) -> Result<String, String> {
@@ -4575,6 +4605,7 @@ pub fn run() {
             hook_get_monitored,
             hook_notify_complete,
             // File system
+            get_file_metadata,
             read_file,
             list_directory
         ])
