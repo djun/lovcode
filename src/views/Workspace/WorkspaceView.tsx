@@ -1,11 +1,10 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useAtom } from "jotai";
-import { selectedFileAtom, activePanelIdAtom } from "@/store";
+import { selectedFileAtom, activePanelIdAtom, workspaceDataAtom, workspaceLoadingAtom } from "@/store";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 
-import { ProjectSidebar } from "./ProjectSidebar";
 import { FeatureSidebar } from "./FeatureSidebar";
 import { ProjectHomeView } from "./ProjectHomeView";
 import { ProjectDashboard } from "./ProjectDashboard";
@@ -16,13 +15,10 @@ import { disposeTerminal } from "../../components/Terminal";
 import type { WorkspaceData, WorkspaceProject, Feature, FeatureStatus, PanelState as StoredPanelState, SessionState as StoredSessionState, LayoutNode } from "./types";
 
 export function WorkspaceView() {
-  const [workspace, setWorkspace] = useState<WorkspaceData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [workspace, setWorkspace] = useAtom(workspaceDataAtom);
+  const [loading, setLoading] = useAtom(workspaceLoadingAtom);
   const [sharedPanelCollapsed, setSharedPanelCollapsed] = useState(() => {
     return localStorage.getItem("feature-sidebar-collapsed") === "true";
-  });
-  const [projectSidebarCollapsed, setProjectSidebarCollapsed] = useState(() => {
-    return localStorage.getItem("project-sidebar-collapsed") === "true";
   });
   const [activePanelId, setActivePanelId] = useAtom(activePanelIdAtom);
   const [selectedFile, setSelectedFile] = useAtom(selectedFileAtom);
@@ -57,14 +53,10 @@ export function WorkspaceView() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Persist sidebar collapsed states
+  // Persist sidebar collapsed state
   useEffect(() => {
     localStorage.setItem("feature-sidebar-collapsed", String(sharedPanelCollapsed));
   }, [sharedPanelCollapsed]);
-
-  useEffect(() => {
-    localStorage.setItem("project-sidebar-collapsed", String(projectSidebarCollapsed));
-  }, [projectSidebarCollapsed]);
 
   // Listen for feature-complete events
   useEffect(() => {
@@ -140,43 +132,6 @@ export function WorkspaceView() {
     }
   }, [workspace, saveWorkspace]);
 
-  // Archive project handler (hide but keep data)
-  const handleArchiveProject = useCallback(
-    (id: string) => {
-      if (!workspace) return;
-
-      const nonArchivedProjects = workspace.projects.filter((p) => p.id !== id && !p.archived);
-      const newProjects = workspace.projects.map((p) =>
-        p.id === id ? { ...p, archived: true } : p
-      );
-      saveWorkspace({
-        ...workspace,
-        projects: newProjects,
-        active_project_id:
-          workspace.active_project_id === id
-            ? nonArchivedProjects[0]?.id
-            : workspace.active_project_id,
-      });
-    },
-    [workspace, saveWorkspace]
-  );
-
-  // Unarchive project handler
-  const handleUnarchiveProject = useCallback(
-    (id: string) => {
-      if (!workspace) return;
-
-      const newProjects = workspace.projects.map((p) =>
-        p.id === id ? { ...p, archived: false } : p
-      );
-      saveWorkspace({
-        ...workspace,
-        projects: newProjects,
-        active_project_id: id,
-      });
-    },
-    [workspace, saveWorkspace]
-  );
 
   // Add new feature with auto-generated name
   const handleAddFeature = useCallback(async (projectId?: string) => {
@@ -239,145 +194,6 @@ export function WorkspaceView() {
     }
   }, [activeProject, workspace, saveWorkspace]);
 
-  // Unarchive feature handler (restore to tabs)
-  const handleUnarchiveFeature = useCallback(
-    (projectId: string, featureId: string) => {
-      if (!workspace) return;
-
-      const newProjects = workspace.projects.map((p) => {
-        if (p.id !== projectId) return p;
-        return {
-          ...p,
-          features: p.features.map((f) =>
-            f.id === featureId ? { ...f, archived: false } : f
-          ),
-          active_feature_id: featureId,
-        };
-      });
-      saveWorkspace({
-        ...workspace,
-        projects: newProjects,
-        active_project_id: projectId,
-      });
-    },
-    [workspace, saveWorkspace]
-  );
-
-  // Archive feature handler
-  const handleArchiveFeature = useCallback(
-    (projectId: string, featureId: string) => {
-      if (!workspace) return;
-
-      const newProjects = workspace.projects.map((p) => {
-        if (p.id !== projectId) return p;
-        const activeFeatures = p.features.filter((f) => f.id !== featureId && !f.archived);
-        return {
-          ...p,
-          features: p.features.map((f) =>
-            f.id === featureId ? { ...f, archived: true } : f
-          ),
-          active_feature_id:
-            p.active_feature_id === featureId
-              ? activeFeatures[0]?.id
-              : p.active_feature_id,
-        };
-      });
-      saveWorkspace({ ...workspace, projects: newProjects });
-    },
-    [workspace, saveWorkspace]
-  );
-
-  // Delete feature handler
-  const handleDeleteFeature = useCallback(
-    (projectId: string, featureId: string) => {
-      if (!workspace) return;
-
-      // Find and kill PTYs for this feature before deleting
-      const project = workspace.projects.find((p) => p.id === projectId);
-      if (project) {
-        const feature = project.features.find((f) => f.id === featureId);
-        if (feature) {
-          for (const panel of feature.panels) {
-            for (const session of panel.sessions || []) {
-              disposeTerminal(session.pty_id);
-              invoke("pty_kill", { id: session.pty_id }).catch(console.error);
-              invoke("pty_purge_scrollback", { id: session.pty_id }).catch(console.error);
-            }
-          }
-        }
-      }
-
-      const newProjects = workspace.projects.map((p) => {
-        if (p.id !== projectId) return p;
-        const remainingFeatures = p.features.filter((f) => f.id !== featureId);
-        const activeFeatures = remainingFeatures.filter((f) => !f.archived);
-        return {
-          ...p,
-          features: remainingFeatures,
-          active_feature_id:
-            p.active_feature_id === featureId
-              ? activeFeatures[0]?.id
-              : p.active_feature_id,
-        };
-      });
-      saveWorkspace({ ...workspace, projects: newProjects });
-    },
-    [workspace, saveWorkspace]
-  );
-
-  // Pin/Unpin feature handler
-  const handlePinFeature = useCallback(
-    (projectId: string, featureId: string, pinned: boolean) => {
-      if (!workspace) return;
-
-      const newProjects = workspace.projects.map((p) => {
-        if (p.id !== projectId) return p;
-        return {
-          ...p,
-          features: p.features.map((f) =>
-            f.id === featureId ? { ...f, pinned } : f
-          ),
-        };
-      });
-      saveWorkspace({ ...workspace, projects: newProjects });
-    },
-    [workspace, saveWorkspace]
-  );
-
-  // Change feature status handler
-  const handleChangeFeatureStatus = useCallback(
-    (projectId: string, featureId: string, status: FeatureStatus) => {
-      if (!workspace) return;
-
-      const newProjects = workspace.projects.map((p) => {
-        if (p.id !== projectId) return p;
-        return {
-          ...p,
-          features: p.features.map((f) =>
-            f.id === featureId ? { ...f, status } : f
-          ),
-        };
-      });
-      saveWorkspace({ ...workspace, projects: newProjects });
-    },
-    [workspace, saveWorkspace]
-  );
-
-  // Open project dashboard
-  const handleOpenDashboard = useCallback(
-    (projectId: string) => {
-      if (!workspace) return;
-      const newProjects = workspace.projects.map((p) =>
-        p.id === projectId ? { ...p, view_mode: "dashboard" as const } : p
-      );
-      saveWorkspace({
-        ...workspace,
-        projects: newProjects,
-        active_project_id: projectId,
-      });
-    },
-    [workspace, saveWorkspace]
-  );
 
   // Update feature status from dashboard (no auto-archive)
   const handleDashboardFeatureStatusChange = useCallback(
@@ -417,28 +233,6 @@ export function WorkspaceView() {
       });
     },
     [activeProject, workspace, saveWorkspace]
-  );
-
-  // Open feature panel (select project and its first feature)
-  const handleOpenFeaturePanel = useCallback(
-    (projectId: string) => {
-      if (!workspace) return;
-      const project = workspace.projects.find((p) => p.id === projectId);
-      if (!project) return;
-
-      const firstActiveFeature = project.features.find((f) => !f.archived);
-      const newProjects = workspace.projects.map((p) =>
-        p.id === projectId
-          ? { ...p, active_feature_id: firstActiveFeature?.id || p.active_feature_id, view_mode: "features" as const }
-          : p
-      );
-      saveWorkspace({
-        ...workspace,
-        projects: newProjects,
-        active_project_id: projectId,
-      });
-    },
-    [workspace, saveWorkspace]
   );
 
   // Layout tree utilities
@@ -1152,41 +946,6 @@ export function WorkspaceView() {
   return (
     <div className="h-full flex flex-col bg-canvas">
       <div className="flex-1 flex min-h-0">
-        {/* Project sidebar */}
-        <ProjectSidebar
-          projects={workspace?.projects || []}
-          activeProjectId={workspace?.active_project_id}
-          activeFeatureId={activeProject?.active_feature_id}
-          onSelectFeature={(projectId, featureId) => {
-            if (!workspace) return;
-            const newProjects = workspace.projects.map((p) =>
-              p.id === projectId ? { ...p, active_feature_id: featureId, view_mode: "features" as const } : p
-            );
-            saveWorkspace({
-              ...workspace,
-              projects: newProjects,
-              active_project_id: projectId,
-            });
-          }}
-          onAddProject={handleAddProject}
-          onAddFeature={handleAddFeature}
-          onArchiveProject={handleArchiveProject}
-          onUnarchiveProject={handleUnarchiveProject}
-          onUnarchiveFeature={handleUnarchiveFeature}
-          onArchiveFeature={handleArchiveFeature}
-          onDeleteFeature={handleDeleteFeature}
-          onPinFeature={handlePinFeature}
-          onChangeFeatureStatus={handleChangeFeatureStatus}
-          onOpenDashboard={handleOpenDashboard}
-          onOpenFeaturePanel={handleOpenFeaturePanel}
-          onRenameFeature={(projectId, featureId, name) => {
-            const project = workspace?.projects.find(p => p.id === projectId);
-            if (project) handleRenameFeature(featureId, name);
-          }}
-          collapsed={projectSidebarCollapsed}
-          onCollapsedChange={setProjectSidebarCollapsed}
-        />
-
         {/* Main content area */}
         <div className="flex-1 flex min-w-0">
           {activeProject ? (
