@@ -84,35 +84,27 @@ export function TerminalPane({
     // Composition input (pinyin) should go through xterm normally
     // See: https://github.com/xtermjs/xterm.js/issues/3070
     const textarea = pooled.container.querySelector('textarea') as HTMLTextAreaElement;
-    let handlingDirectNonAscii = false;
-    let justFinishedComposition = false;
+    // Track the key press that triggered direct non-ASCII input
+    // We use a counter to identify key presses, avoiding timing issues with flags
+    let currentKeyPressId = 0;
+    let directInputKeyPressId = -1;
     let lastDirectInputSent: string | null = null;
 
     if (textarea) {
-      // Track composition state
-      let isComposing = false;
-      textarea.addEventListener('compositionstart', () => {
-        isComposing = true;
-      }, { capture: true });
-      textarea.addEventListener('compositionend', () => {
-        isComposing = false;
-        justFinishedComposition = true;
+      // Increment key press counter on each keydown
+      textarea.addEventListener('keydown', () => {
+        currentKeyPressId++;
       }, { capture: true });
 
       // Use beforeinput to intercept BEFORE the character enters textarea
+      // inputType 'insertText' is for direct input, 'insertCompositionText' is for IME composition
       textarea.addEventListener('beforeinput', (e) => {
         const ie = e as InputEvent;
 
-        // Skip composition input
-        if (isComposing || justFinishedComposition) {
-          justFinishedComposition = false;
-          return;
-        }
-
-        // Only handle direct non-ASCII input (Shift+punctuation)
+        // Only handle direct non-ASCII input (Shift+punctuation), not composition
         if (ie.inputType === 'insertText' && ie.data && /[^\x00-\x7f]/.test(ie.data)) {
           e.preventDefault(); // Prevent xterm from seeing it at all
-          handlingDirectNonAscii = true;
+          directInputKeyPressId = currentKeyPressId;
           lastDirectInputSent = ie.data;
           // Send directly to PTY
           if (ptyReadySessions.has(sessionId)) {
@@ -122,15 +114,6 @@ export function TerminalPane({
         }
       }, { capture: true });
     }
-
-    // Block xterm's keydown processing when we just handled direct non-ASCII input
-    term.attachCustomKeyEventHandler((event) => {
-      if (event.type === 'keydown' && handlingDirectNonAscii) {
-        handlingDirectNonAscii = false;
-        return false;
-      }
-      return true;
-    });
 
     // Track mount state
     const mountState = { isMounted: true };
@@ -210,16 +193,29 @@ export function TerminalPane({
     // Handle user input
     const onDataDisposable = term.onData((data) => {
       if (!ptyReadySessions.has(sessionId)) return;
-      // Skip if this exact data was already sent by our direct input handler
-      if (lastDirectInputSent === data) {
-        lastDirectInputSent = null;
-        return;
+
+      // Check if this data is from the same key press as our direct non-ASCII input
+      const isSameKeyPress = directInputKeyPressId === currentKeyPressId;
+
+      if (isSameKeyPress && lastDirectInputSent) {
+        // Skip if this exact data was already sent by our direct input handler
+        if (lastDirectInputSent === data) {
+          lastDirectInputSent = null;
+          return;
+        }
+        // Skip ASCII punctuation that accompanies direct non-ASCII input
+        // (e.g., xterm sends "(" from keydown while IME produces "（")
+        if (/^[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]$/.test(data)) {
+          lastDirectInputSent = null;
+          return;
+        }
       }
-      // Skip ASCII punctuation that accompanies direct non-ASCII input (e.g., "(" when IME produces "（")
-      if (lastDirectInputSent && /^[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]$/.test(data)) {
+
+      // Clear stale state from previous key presses
+      if (!isSameKeyPress) {
         lastDirectInputSent = null;
-        return;
       }
+
       const encoder = new TextEncoder();
       const bytes = Array.from(encoder.encode(data));
       invoke("pty_write", { id: sessionId, data: bytes }).catch(console.error);
