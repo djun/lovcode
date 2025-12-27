@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { FlaskConical } from "lucide-react";
 import { useInvokeQuery, useQueryClient } from "../../hooks";
 import {
@@ -87,6 +88,7 @@ export function SettingsView({
   const [expandedPresetKey, setExpandedPresetKey] = useState<string | null>(null);
   const [selectedModels, setSelectedModels] = useState<Record<string, string>>({
     univibe: "claude-sonnet-4-5-20250929",
+    siliconflow: "moonshotai/Kimi-K2-Instruct-0905",
   });
 
   // Initialize selected model from current env
@@ -174,8 +176,22 @@ export function SettingsView({
       { id: "claude-opus-4-5-20251101", label: "Claude Opus 4.5" },
       { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
     ],
+    siliconflow: [
+      { id: "moonshotai/Kimi-K2-Instruct-0905", label: "Kimi K2 Instruct" },
+      { id: "moonshotai/Kimi-K2-Thinking", label: "Kimi K2 Thinking" },
+      { id: "deepseek-ai/DeepSeek-V3.2", label: "DeepSeek V3.2" },
+      { id: "deepseek-ai/DeepSeek-V3.1-Terminus", label: "DeepSeek V3.1 Terminus" },
+      { id: "deepseek-ai/DeepSeek-R1", label: "DeepSeek R1" },
+      { id: "Qwen/Qwen3-Coder-480B-A35B-Instruct", label: "Qwen3 Coder 480B" },
+      { id: "Qwen/Qwen3-235B-A22B", label: "Qwen3 235B" },
+      { id: "Qwen/QwQ-32B", label: "QwQ 32B" },
+      { id: "zai-org/GLM-4.7", label: "GLM 4.7" },
+      { id: "THUDM/GLM-Z1-32B-0414", label: "GLM-Z1 32B" },
+      { id: "MiniMaxAI/MiniMax-M2", label: "MiniMax M2" },
+    ],
   };
 
+  // Sorted by key in ASCII order for consistent display
   const proxyPresets = [
     {
       key: "anthropic-subscription",
@@ -184,24 +200,17 @@ export function SettingsView({
       templateName: "anthropic-subscription",
     },
     {
+      key: "modelgate",
+      label: "ModelGate",
+      description: "ModelGate API gateway for Claude",
+      templateName: "modelgate-anthropic-proxy",
+      docsUrl: "https://docs.modelgate.net/guide/tools/claude-code.html",
+    },
+    {
       key: "native",
       label: "Anthropic API",
       description: "Direct Anthropic API with your API key",
       templateName: "anthropic-native-endpoint",
-    },
-    {
-      key: "zenmux",
-      label: "ZenMux",
-      description: "Route via ZenMux to unlock more model options",
-      templateName: "zenmux-anthropic-proxy",
-      docsUrl: "https://docs.zenmux.ai/best-practices/claude-code.html",
-    },
-    {
-      key: "univibe",
-      label: "UniVibe",
-      description: "UniVibe proxy service, supports Claude Code / Codex / Cursor",
-      templateName: "univibe-anthropic-proxy",
-      docsUrl: "https://www.univibe.cc/console/docs/claudecode",
     },
     {
       key: "qiniu",
@@ -211,11 +220,25 @@ export function SettingsView({
       docsUrl: "https://developer.qiniu.com/aitokenapi/13085/claude-code-configuration-instructions",
     },
     {
-      key: "modelgate",
-      label: "ModelGate",
-      description: "ModelGate API gateway for Claude",
-      templateName: "modelgate-anthropic-proxy",
-      docsUrl: "https://docs.modelgate.net/guide/tools/claude-code.html",
+      key: "siliconflow",
+      label: "SiliconFlow",
+      description: "Use SiliconCloud API for Claude Code with various models",
+      templateName: "siliconflow-anthropic-proxy",
+      docsUrl: "https://docs.siliconflow.com/en/userguide/quickstart",
+    },
+    {
+      key: "univibe",
+      label: "UniVibe",
+      description: "UniVibe proxy service, supports Claude Code / Codex / Cursor",
+      templateName: "univibe-anthropic-proxy",
+      docsUrl: "https://www.univibe.cc/console/docs/claudecode",
+    },
+    {
+      key: "zenmux",
+      label: "ZenMux",
+      description: "Route via ZenMux to unlock more model options",
+      templateName: "zenmux-anthropic-proxy",
+      docsUrl: "https://docs.zenmux.ai/best-practices/claude-code.html",
     },
   ];
 
@@ -268,6 +291,13 @@ export function SettingsView({
       description: "ModelGate API gateway for Claude.",
       downloads: null,
       content: JSON.stringify({ env: { MODELGATE_API_KEY: "your_modelgate_api_key" } }, null, 2),
+    },
+    siliconflow: {
+      name: "siliconflow-anthropic-proxy",
+      path: "fallback/siliconflow-anthropic-proxy.json",
+      description: "Use SiliconCloud API for Claude Code.",
+      downloads: null,
+      content: JSON.stringify({ env: { SILICONFLOW_API_KEY: "sk-xxxxx" } }, null, 2),
     },
   };
 
@@ -381,6 +411,42 @@ export function SettingsView({
         }
       }
 
+      if (presetKey === "siliconflow") {
+        const apiKey = (envSource.SILICONFLOW_API_KEY || envSource.ANTHROPIC_API_KEY || "").trim();
+        const baseUrl = envSource.ANTHROPIC_BASE_URL || "https://api.siliconflow.com/v1";
+
+        try {
+          const result = await invoke<{ ok: boolean; status: number; body: string }>("test_openai_connection", {
+            baseUrl,
+            apiKey,
+          });
+
+          if (!result.ok) {
+            setTestStatus((prev) => ({ ...prev, [presetKey]: "error" }));
+            setTestMessage((prev) => ({
+              ...prev,
+              [presetKey]: `SiliconFlow test failed (${result.status}): ${result.body || "No response body"}`,
+            }));
+            return;
+          }
+
+          // Parse model count from response
+          let modelCount = 0;
+          try {
+            const parsed = JSON.parse(result.body);
+            modelCount = parsed.data?.length || 0;
+          } catch {}
+
+          setTestStatus((prev) => ({ ...prev, [presetKey]: "success" }));
+          setTestMessage((prev) => ({ ...prev, [presetKey]: `Connected (${modelCount} models available)` }));
+          return;
+        } catch (e) {
+          setTestStatus((prev) => ({ ...prev, [presetKey]: "error" }));
+          setTestMessage((prev) => ({ ...prev, [presetKey]: `SiliconFlow test error: ${String(e)}` }));
+          return;
+        }
+      }
+
       if (presetKey === "zenmux" || presetKey === "modelgate") {
         const authToken = (
           envSource.ZENMUX_API_KEY ||
@@ -392,11 +458,11 @@ export function SettingsView({
           ? "https://zenmux.ai/api/anthropic"
           : "https://mg.aid.pub/claude-proxy";
         const baseUrl = envSource.ANTHROPIC_BASE_URL || defaultBaseUrl;
-        const model = envSource.ANTHROPIC_DEFAULT_SONNET_MODEL || envSource.ANTHROPIC_MODEL || "anthropic/claude-sonnet-4.5";
+        const model = envSource.ANTHROPIC_MODEL || envSource.ANTHROPIC_DEFAULT_SONNET_MODEL || "anthropic/claude-sonnet-4.5";
         const label = presetKey === "zenmux" ? "ZenMux" : "ModelGate";
 
         try {
-          const result = await invoke<{ ok: boolean; status: number; body: string }>("test_zenmux_connection", {
+          const result = await invoke<{ ok: boolean; status: number; body: string }>("test_anthropic_connection", {
             baseUrl,
             authToken,
             model,
@@ -430,6 +496,7 @@ export function SettingsView({
     zenmux: { ZENMUX_API_KEY: "ANTHROPIC_AUTH_TOKEN" },
     qiniu: { QINIU_API_KEY: "ANTHROPIC_AUTH_TOKEN" },
     modelgate: { MODELGATE_API_KEY: "ANTHROPIC_AUTH_TOKEN" },
+    siliconflow: { SILICONFLOW_API_KEY: "ANTHROPIC_API_KEY" },
   };
 
   const presetExtraEnv: Record<string, Record<string, string>> = {
@@ -446,6 +513,9 @@ export function SettingsView({
     modelgate: {
       ANTHROPIC_BASE_URL: "https://mg.aid.pub/claude-proxy",
       ANTHROPIC_API_KEY: "",
+    },
+    siliconflow: {
+      ANTHROPIC_BASE_URL: "https://api.siliconflow.com/v1",
     },
   };
 
@@ -485,9 +555,9 @@ export function SettingsView({
         }
         // Merge extra env vars
         Object.assign(parsed.env, extraEnv);
-        // Add model for univibe
-        if (presetKey === "univibe" && selectedModels.univibe) {
-          parsed.env.ANTHROPIC_MODEL = selectedModels.univibe;
+        // Add model for providers with model selection
+        if (selectedModels[presetKey]) {
+          parsed.env.ANTHROPIC_MODEL = selectedModels[presetKey];
         }
       }
 
@@ -639,16 +709,16 @@ export function SettingsView({
             <div className="flex items-center gap-2 mt-1">
               <p className="text-xs text-muted-foreground truncate">{preset.description}</p>
               {preset.docsUrl && (
-                <a
-                  href={preset.docsUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
                   className="text-muted-foreground hover:text-primary shrink-0"
                   title="Documentation"
-                  onClick={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openUrl(preset.docsUrl!);
+                  }}
                 >
                   <ExternalLinkIcon className="w-3 h-3" />
-                </a>
+                </button>
               )}
             </div>
           </div>
@@ -1083,6 +1153,9 @@ export function SettingsView({
           headerRight={applyError && <p className="text-xs text-red-600">{applyError}</p>}
           bodyClassName="p-3 space-y-3"
         >
+          <p className="text-xs text-muted-foreground mb-3">
+            Configure API endpoint for Claude Code. Official options use Anthropic directly; third-party partners provide proxy services with additional models or regional access.
+          </p>
           <Tabs defaultValue={defaultProviderTab}>
             <TabsList>
               <TabsTrigger value="official">Anthropic Official</TabsTrigger>

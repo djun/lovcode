@@ -3744,20 +3744,20 @@ fn update_disabled_settings_env(env_key: String, env_value: String) -> Result<()
 }
 
 #[derive(Serialize)]
-struct ZenmuxTestResult {
+struct ConnectionTestResult {
     ok: bool,
     status: u16,
     body: String,
 }
 
 #[tauri::command]
-async fn test_zenmux_connection(
+async fn test_anthropic_connection(
     base_url: String,
     auth_token: String,
     model: String,
-) -> Result<ZenmuxTestResult, String> {
+) -> Result<ConnectionTestResult, String> {
     if auth_token.trim().is_empty() {
-        return Err("ZENMUX_API_KEY/ANTHROPIC_AUTH_TOKEN is empty".to_string());
+        return Err("ANTHROPIC_AUTH_TOKEN is empty".to_string());
     }
 
     let base = base_url.trim_end_matches('/');
@@ -3774,9 +3774,9 @@ async fn test_zenmux_connection(
         ]
     });
 
-    println!("zenmux test request url={}", url);
-    println!("zenmux test request headers x-api-key={} anthropic-version=2023-06-01 content-type=application/json", auth_token);
-    println!("zenmux test request body={}", payload);
+    println!("anthropic test request url={}", url);
+    println!("anthropic test request headers x-api-key={} anthropic-version=2023-06-01 content-type=application/json", auth_token);
+    println!("anthropic test request body={}", payload);
 
     let response = client
         .post(&url)
@@ -3790,9 +3790,42 @@ async fn test_zenmux_connection(
 
     let status = response.status();
     let body = response.text().await.unwrap_or_default();
-    println!("zenmux test status={} body={}", status, body);
+    println!("anthropic test status={} body={}", status, body);
 
-    Ok(ZenmuxTestResult {
+    Ok(ConnectionTestResult {
+        ok: status.is_success(),
+        status: status.as_u16(),
+        body,
+    })
+}
+
+#[tauri::command]
+async fn test_openai_connection(
+    base_url: String,
+    api_key: String,
+) -> Result<ConnectionTestResult, String> {
+    if api_key.trim().is_empty() {
+        return Err("API key is empty".to_string());
+    }
+
+    let base = base_url.trim_end_matches('/');
+    let url = format!("{}/models", base);
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(12))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let response = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", api_key))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let status = response.status();
+    let body = response.text().await.unwrap_or_default();
+
+    Ok(ConnectionTestResult {
         ok: status.is_success(),
         status: status.as_u16(),
         body,
@@ -4596,7 +4629,8 @@ pub fn run() {
             disable_settings_env,
             enable_settings_env,
             update_disabled_settings_env,
-            test_zenmux_connection,
+            test_anthropic_connection,
+            test_openai_connection,
             test_claude_cli,
             list_distill_documents,
             get_distill_document,
