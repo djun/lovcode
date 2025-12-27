@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { useAtom } from "jotai";
 import { PlusIcon, ArchiveIcon, DashboardIcon } from "@radix-ui/react-icons";
-import { SortableContext, horizontalListSortingStrategy } from "@dnd-kit/sortable";
+import { SortableContext, horizontalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { workspaceDataAtom, collapsedProjectGroupsAtom, viewAtom } from "@/store";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -24,6 +25,8 @@ interface FeatureTabGroupProps {
   features: Feature[];
   isActiveProject: boolean;
   isCollapsed: boolean;
+  isDragging?: boolean;
+  dragHandleProps?: ReturnType<typeof useSortable>["listeners"];
 }
 
 export function FeatureTabGroup({
@@ -31,6 +34,8 @@ export function FeatureTabGroup({
   features,
   isActiveProject,
   isCollapsed,
+  isDragging,
+  dragHandleProps,
 }: FeatureTabGroupProps) {
   const [workspace, setWorkspace] = useAtom(workspaceDataAtom);
   const [collapsedGroups, setCollapsedGroups] = useAtom(collapsedProjectGroupsAtom);
@@ -249,16 +254,20 @@ export function FeatureTabGroup({
     // Collapsed view: just project name with count
     return (
       <>
-        <div className="flex items-center flex-shrink-0">
+        <div className={`flex items-center flex-shrink-0 ${isDragging ? "opacity-50" : ""}`}>
           <ContextMenu>
             <ContextMenuTrigger asChild>
               <button
                 onClick={features.length > 0 ? toggleCollapsed : handleSelectProject}
-                onPointerDown={(e) => e.stopPropagation()}
-                className={`flex items-center gap-1.5 px-2 py-1 rounded-lg transition-colors ${
-                  isActiveProject ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-ink hover:bg-card-alt"
+                className={`flex items-center gap-1.5 px-2 py-1 rounded-lg transition-colors cursor-grab active:cursor-grabbing ${
+                  isDragging
+                    ? "bg-primary/20 shadow-lg"
+                    : isActiveProject
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:text-ink hover:bg-card-alt"
                 }`}
                 title={projectDisplayName}
+                {...dragHandleProps}
               >
                 <ProjectLogo projectPath={project.path} size="sm" />
                 {!hasLogo && (
@@ -286,10 +295,14 @@ export function FeatureTabGroup({
   // Expanded view: project header + tabs with underline indicator
   return (
     <>
-      <div className="flex items-center flex-shrink-0">
+      <div className={`flex items-center flex-shrink-0 ${isDragging ? "opacity-50" : ""}`}>
         <div
           className={`relative flex items-center gap-0.5 px-1 pb-1 after:absolute after:bottom-0 after:left-1 after:right-1 after:h-0.5 after:rounded-full ${
-            isActiveProject ? "after:bg-primary" : "after:bg-border"
+            isDragging
+              ? "bg-primary/10 rounded-lg after:bg-primary"
+              : isActiveProject
+                ? "after:bg-primary"
+                : "after:bg-border"
           }`}
         >
           {/* Project header with context menu */}
@@ -297,11 +310,11 @@ export function FeatureTabGroup({
             <ContextMenuTrigger asChild>
               <button
                 onClick={features.length > 0 ? toggleCollapsed : handleSelectProject}
-                onPointerDown={(e) => e.stopPropagation()}
-                className={`flex items-center px-1 py-1 rounded transition-colors flex-shrink-0 ${
+                className={`flex items-center px-1 py-1 rounded transition-colors flex-shrink-0 cursor-grab active:cursor-grabbing ${
                   isActiveProject ? "text-primary" : "text-muted-foreground hover:text-ink"
                 }`}
                 title={projectDisplayName}
+                {...dragHandleProps}
               >
                 <ProjectLogo projectPath={project.path} size="sm" />
               </button>
@@ -352,5 +365,28 @@ export function FeatureTabGroup({
         onSubmit={handleCreateFeature}
       />
     </>
+  );
+}
+
+// Sortable wrapper for drag-and-drop project groups
+export function SortableFeatureTabGroup(props: Omit<FeatureTabGroupProps, "isDragging" | "dragHandleProps">) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: `project-${props.project.id}` });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} className="flex-shrink-0">
+      <FeatureTabGroup {...props} isDragging={isDragging} dragHandleProps={listeners} />
+    </div>
   );
 }

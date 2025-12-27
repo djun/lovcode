@@ -5,8 +5,6 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   Cross2Icon,
   CheckCircledIcon,
-  UpdateIcon,
-  ExclamationTriangleIcon,
   TimerIcon,
   DrawingPinFilledIcon,
   Pencil1Icon,
@@ -25,7 +23,7 @@ import {
 } from "@/components/ui/context-menu";
 import { workspaceDataAtom } from "@/store";
 import { invoke } from "@tauri-apps/api/core";
-import type { Feature, FeatureStatus, WorkspaceData } from "@/views/Workspace/types";
+import type { Feature, WorkspaceData } from "@/views/Workspace/types";
 
 interface FeatureTabProps {
   feature: Feature;
@@ -33,19 +31,7 @@ interface FeatureTabProps {
   isActive: boolean;
   onSelect: () => void;
   isDragging?: boolean;
-}
-
-function StatusIcon({ status }: { status: FeatureStatus }) {
-  switch (status) {
-    case "pending":
-      return <TimerIcon className="w-3 h-3 text-muted-foreground" />;
-    case "running":
-      return <UpdateIcon className="w-3 h-3 text-blue-500" />;
-    case "completed":
-      return <CheckCircledIcon className="w-3 h-3 text-green-500" />;
-    case "needs-review":
-      return <ExclamationTriangleIcon className="w-3 h-3 text-amber-500" />;
-  }
+  dragHandleProps?: ReturnType<typeof useSortable>["listeners"];
 }
 
 export function FeatureTab({
@@ -54,6 +40,7 @@ export function FeatureTab({
   isActive,
   onSelect,
   isDragging,
+  dragHandleProps,
 }: FeatureTabProps) {
   const [workspace, setWorkspace] = useAtom(workspaceDataAtom);
   const [isRenaming, setIsRenaming] = useState(false);
@@ -100,7 +87,7 @@ export function FeatureTab({
     setIsRenaming(false);
   };
 
-  const handleArchive = async () => {
+  const handleArchive = async (note?: string) => {
     if (!workspace) return;
 
     const newProjects = workspace.projects.map((p) => {
@@ -109,7 +96,7 @@ export function FeatureTab({
       return {
         ...p,
         features: p.features.map((f) =>
-          f.id === feature.id ? { ...f, archived: true } : f
+          f.id === feature.id ? { ...f, archived: true, archived_note: note } : f
         ),
         active_feature_id:
           p.active_feature_id === feature.id
@@ -158,23 +145,6 @@ export function FeatureTab({
     await saveWorkspace({ ...workspace, projects: newProjects });
   };
 
-  const handleStatusChange = async (status: FeatureStatus) => {
-    if (!workspace) return;
-
-    const newProjects = workspace.projects.map((p) =>
-      p.id === projectId
-        ? {
-            ...p,
-            features: p.features.map((f) =>
-              f.id === feature.id ? { ...f, status } : f
-            ),
-          }
-        : p
-    );
-
-    await saveWorkspace({ ...workspace, projects: newProjects });
-  };
-
   const handleDoubleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     setRenameValue(feature.name);
@@ -209,10 +179,6 @@ export function FeatureTab({
           {feature.pinned && (
             <DrawingPinFilledIcon className="w-2.5 h-2.5 text-primary/70 flex-shrink-0" />
           )}
-          <span className="flex-shrink-0"><StatusIcon status={feature.status} /></span>
-          {feature.seq > 0 && (
-            <span className="text-[10px] text-muted-foreground/60 flex-shrink-0">#{feature.seq}</span>
-          )}
           {isRenaming ? (
             <input
               ref={inputRef}
@@ -226,7 +192,11 @@ export function FeatureTab({
               className="w-16 text-xs bg-card border border-border rounded px-1 outline-none focus:border-primary flex-shrink-0"
             />
           ) : (
-            <span className="text-xs truncate min-w-0" title={feature.name}>
+            <span
+              className="text-xs truncate min-w-0 cursor-grab active:cursor-grabbing"
+              title={feature.name}
+              {...dragHandleProps}
+            >
               {feature.name}
             </span>
           )}
@@ -259,51 +229,36 @@ export function FeatureTab({
           <DrawingPinFilledIcon className="w-3.5 h-3.5" />
           {feature.pinned ? "Unpin" : "Pin"}
         </ContextMenuItem>
+        <ContextMenuSeparator />
         <ContextMenuSub>
           <ContextMenuSubTrigger className="gap-2">
-            <StatusIcon status={feature.status} />
-            Status
+            <ArchiveIcon className="w-3.5 h-3.5" />
+            Archive
           </ContextMenuSubTrigger>
           <ContextMenuSubContent className="min-w-[120px]">
             <ContextMenuItem
-              onClick={() => handleStatusChange("pending")}
-              disabled={feature.status === "pending"}
-              className="gap-2 cursor-pointer"
-            >
-              <TimerIcon className="w-3.5 h-3.5 text-muted-foreground" />
-              Pending
-            </ContextMenuItem>
-            <ContextMenuItem
-              onClick={() => handleStatusChange("running")}
-              disabled={feature.status === "running"}
-              className="gap-2 cursor-pointer"
-            >
-              <UpdateIcon className="w-3.5 h-3.5 text-blue-500" />
-              Running
-            </ContextMenuItem>
-            <ContextMenuItem
-              onClick={() => handleStatusChange("completed")}
-              disabled={feature.status === "completed"}
+              onClick={() => handleArchive("completed")}
               className="gap-2 cursor-pointer"
             >
               <CheckCircledIcon className="w-3.5 h-3.5 text-green-500" />
               Completed
             </ContextMenuItem>
             <ContextMenuItem
-              onClick={() => handleStatusChange("needs-review")}
-              disabled={feature.status === "needs-review"}
+              onClick={() => handleArchive("cancelled")}
               className="gap-2 cursor-pointer"
             >
-              <ExclamationTriangleIcon className="w-3.5 h-3.5 text-amber-500" />
-              Needs Review
+              <Cross2Icon className="w-3.5 h-3.5 text-muted-foreground" />
+              Cancelled
+            </ContextMenuItem>
+            <ContextMenuItem
+              onClick={() => handleArchive("on-hold")}
+              className="gap-2 cursor-pointer"
+            >
+              <TimerIcon className="w-3.5 h-3.5 text-amber-500" />
+              On Hold
             </ContextMenuItem>
           </ContextMenuSubContent>
         </ContextMenuSub>
-        <ContextMenuSeparator />
-        <ContextMenuItem onClick={handleArchive} className="gap-2 cursor-pointer">
-          <ArchiveIcon className="w-3.5 h-3.5" />
-          Archive
-        </ContextMenuItem>
         <ContextMenuItem
           onClick={handleDelete}
           className="gap-2 cursor-pointer text-destructive focus:text-destructive"
@@ -317,7 +272,7 @@ export function FeatureTab({
 }
 
 // Sortable wrapper for drag-and-drop
-export function SortableFeatureTab(props: Omit<FeatureTabProps, "isDragging">) {
+export function SortableFeatureTab(props: Omit<FeatureTabProps, "isDragging" | "dragHandleProps">) {
   const {
     attributes,
     listeners,
@@ -333,8 +288,8 @@ export function SortableFeatureTab(props: Omit<FeatureTabProps, "isDragging">) {
   };
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="flex-shrink-0">
-      <FeatureTab {...props} isDragging={isDragging} />
+    <div ref={setNodeRef} style={style} {...attributes} className="flex-shrink-0">
+      <FeatureTab {...props} isDragging={isDragging} dragHandleProps={listeners} />
     </div>
   );
 }
