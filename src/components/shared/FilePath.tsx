@@ -9,11 +9,17 @@ import {
 
 interface FilePathProps {
   path: string;
+  basePath?: string;
   className?: string;
   showIcon?: boolean;
 }
 
-export function FilePath({ path, className = "", showIcon = false }: FilePathProps) {
+export function FilePath({ path, basePath, className = "", showIcon = false }: FilePathProps) {
+  // 显示相对路径，hover 显示绝对路径
+  const displayPath = basePath && path.startsWith(basePath)
+    ? path.slice(basePath.length).replace(/^\//, '')
+    : path;
+
   const handleReveal = async () => {
     try {
       await invoke("reveal_path", { path });
@@ -46,7 +52,7 @@ export function FilePath({ path, className = "", showIcon = false }: FilePathPro
           title={path}
         >
           {showIcon && <FileIcon className="w-3 h-3 flex-shrink-0" />}
-          <span className="truncate">{path}</span>
+          <span className="truncate">{displayPath}</span>
         </span>
       </ContextMenuTrigger>
       <ContextMenuContent>

@@ -2,6 +2,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
+use std::io::{BufRead, BufReader};
 use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -253,8 +254,13 @@ fn scan_for_leaked_secrets(project_path: &Path) -> Vec<LeakedSecret> {
     // 要扫描的文件扩展名
     let scan_extensions = ["ts", "tsx", "js", "jsx", "py", "rs", "go", "java", "rb"];
 
-    // 要排除的目录
-    let exclude_dirs = ["node_modules", "target", ".git", "dist", "build", "__pycache__", ".venv", "venv"];
+    // 要排除的目录（包括构建产物）
+    let exclude_dirs = [
+        "node_modules", "target", ".git", "dist", "build", "__pycache__", ".venv", "venv",
+        ".next", ".nuxt", ".output", "out", ".turbo", ".vercel", ".netlify",
+        "coverage", ".nyc_output", ".cache", ".parcel-cache",
+        "chunks", "ssr", "static",  // Next.js 内部目录
+    ];
 
     scan_directory(project_path, &secret_pattern, &scan_extensions, &exclude_dirs, &mut secrets);
 
@@ -334,4 +340,163 @@ fn scan_directory(
             }
         }
     }
+}
+
+/// 文件行数统计
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileLineCount {
+    pub file: String,
+    pub lines: usize,
+}
+
+/// 扫描项目文件，按行数倒序返回
+pub fn scan_file_lines(project_path: &str, limit: usize, ignored_paths: &[String]) -> Result<Vec<FileLineCount>, String> {
+    let path = Path::new(project_path);
+    let mut files: Vec<FileLineCount> = Vec::new();
+
+    // 要扫描的文件扩展名
+    let scan_extensions = [
+        "ts", "tsx", "js", "jsx", "vue", "svelte",
+        "py", "rs", "go", "java", "rb", "php",
+        "css", "scss", "less",
+        "html", "md", "json", "yaml", "yml", "toml",
+    ];
+
+    // 要排除的目录
+    let exclude_dirs = [
+        "node_modules", "target", ".git", "dist", "build", "__pycache__", ".venv", "venv",
+        ".next", ".nuxt", ".output", "out", ".turbo", ".vercel", ".netlify",
+        "coverage", ".nyc_output", ".cache", ".parcel-cache",
+        "chunks", "ssr", "static", ".svelte-kit",
+    ];
+
+    scan_files_recursive(path, path, &scan_extensions, &exclude_dirs, &mut files);
+
+    // 按行数倒序排序
+    files.sort_by(|a, b| b.lines.cmp(&a.lines));
+
+    // 过滤掉用户忽略的路径（在限制条数之前）
+    if !ignored_paths.is_empty() {
+        files.retain(|f| {
+            !ignored_paths.iter().any(|ignored| {
+                f.file == *ignored || f.file.starts_with(&format!("{}/", ignored))
+            })
+        });
+    }
+
+    // 限制返回数量
+    files.truncate(limit);
+
+    Ok(files)
+}
+
+fn scan_files_recursive(
+    dir: &Path,
+    root: &Path,
+    extensions: &[&str],
+    exclude_dirs: &[&str],
+    files: &mut Vec<FileLineCount>,
+) {
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+
+        if path.is_dir() {
+            if exclude_dirs.iter().any(|&d| file_name == d) {
+                continue;
+            }
+            scan_files_recursive(&path, root, extensions, exclude_dirs, files);
+        } else if path.is_file() {
+            let ext = path.extension().unwrap_or_default().to_string_lossy();
+            if !extensions.iter().any(|&e| ext == e) {
+                continue;
+            }
+
+            // 排除锁文件和自动生成的文件
+            let excluded_files = [
+                "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lockb",
+                "Cargo.lock", "poetry.lock", "Pipfile.lock", "composer.lock",
+                ".d.ts", // 类型声明文件
+            ];
+            if excluded_files.iter().any(|&f| file_name.ends_with(f)) {
+                continue;
+            }
+
+            // 统计行数
+            if let Ok(file) = fs::File::open(&path) {
+                let reader = BufReader::new(file);
+                let line_count = reader.lines().count();
+
+                // 获取相对路径（相对于项目根目录）
+                let relative_path = path
+                    .strip_prefix(root)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .to_string();
+
+                files.push(FileLineCount {
+                    file: relative_path,
+                    lines: line_count,
+                });
+            }
+        }
+    }
+}
+
+/// 将 missing keys 添加到 .env 文件
+pub fn add_missing_keys_to_env(project_path: &str, keys: Vec<String>) -> Result<usize, String> {
+    let path = Path::new(project_path);
+    let env_path = path.join(".env");
+    let env_example_path = path.join(".env.example");
+
+    // 读取 .env.example 获取默认值
+    let example_values: std::collections::HashMap<String, String> = if env_example_path.exists() {
+        let content = fs::read_to_string(&env_example_path).unwrap_or_default();
+        content
+            .lines()
+            .filter_map(|line| {
+                let line = line.trim();
+                if line.is_empty() || line.starts_with('#') {
+                    return None;
+                }
+                line.find('=').map(|pos| {
+                    let key = line[..pos].trim().to_string();
+                    let value = line[pos + 1..].trim().to_string();
+                    (key, value)
+                })
+            })
+            .collect()
+    } else {
+        std::collections::HashMap::new()
+    };
+
+    // 读取现有 .env 内容
+    let mut env_content = if env_path.exists() {
+        fs::read_to_string(&env_path).unwrap_or_default()
+    } else {
+        String::new()
+    };
+
+    // 确保以换行结尾
+    if !env_content.is_empty() && !env_content.ends_with('\n') {
+        env_content.push('\n');
+    }
+
+    // 添加 missing keys
+    let mut added_count = 0;
+    for key in &keys {
+        let default_value = example_values.get(key).cloned().unwrap_or_default();
+        env_content.push_str(&format!("{}={}\n", key, default_value));
+        added_count += 1;
+    }
+
+    // 写入文件
+    fs::write(&env_path, env_content).map_err(|e| e.to_string())?;
+
+    Ok(added_count)
 }

@@ -118,3 +118,9 @@ export interface EnvCheckResult {
   env_example_exists: boolean;
   env_exists: boolean;
 }
+
+/** File line count */
+export interface FileLineCount {
+  file: string;
+  lines: number;
+}

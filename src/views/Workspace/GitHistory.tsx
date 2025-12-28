@@ -26,11 +26,12 @@ interface GitHistoryProps {
   projectPath: string;
   features: Feature[];
   onRefresh?: () => void;
+  embedded?: boolean;
 }
 
 type ViewMode = "feats" | "timeline";
 
-export function GitHistory({ projectPath, features, onRefresh }: GitHistoryProps) {
+export function GitHistory({ projectPath, features, onRefresh, embedded = false }: GitHistoryProps) {
   const [commits, setCommits] = useState<CommitInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>("feats");
@@ -165,36 +166,54 @@ export function GitHistory({ projectPath, features, onRefresh }: GitHistoryProps
   }
 
   return (
-    <div className="border-t border-border">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-muted/30">
-        <div className="flex items-center gap-3">
-          <h3 className="text-sm font-medium text-ink">Git History</h3>
+    <div className={embedded ? "" : "border-t border-border"}>
+      {/* Header - only show when not embedded */}
+      {!embedded && (
+        <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-muted/30">
+          <div className="flex items-center gap-3">
+            <h3 className="text-sm font-medium text-ink">Git History</h3>
+            <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>
+              <TabsList className="h-7">
+                <TabsTrigger value="feats" className="text-xs px-2 py-1">
+                  Feats
+                </TabsTrigger>
+                <TabsTrigger value="timeline" className="text-xs px-2 py-1">
+                  Timeline
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger className="p-1 hover:bg-muted rounded">
+              <DotsHorizontalIcon className="w-4 h-4 text-muted-foreground" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={handleExportChangelog}>
+                Export Changelog
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      )}
+
+      {/* Embedded mode: show tabs inline */}
+      {embedded && (
+        <div className="flex items-center justify-between px-3 py-1.5 border-b border-border">
           <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>
-            <TabsList className="h-7">
-              <TabsTrigger value="feats" className="text-xs px-2 py-1">
+            <TabsList className="h-6">
+              <TabsTrigger value="feats" className="text-[10px] px-2 py-0.5">
                 Feats
               </TabsTrigger>
-              <TabsTrigger value="timeline" className="text-xs px-2 py-1">
+              <TabsTrigger value="timeline" className="text-[10px] px-2 py-0.5">
                 Timeline
               </TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger className="p-1 hover:bg-muted rounded">
-            <DotsHorizontalIcon className="w-4 h-4 text-muted-foreground" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={handleExportChangelog}>
-              Export Changelog
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+      )}
 
       {/* Content */}
-      <div className="max-h-[300px] overflow-y-auto">
+      <div className={embedded ? "overflow-y-auto" : "max-h-[300px] overflow-y-auto"}>
         {viewMode === "feats" ? (
           <FeatsView
             commitsByFeat={commitsByFeat}
