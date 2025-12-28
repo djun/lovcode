@@ -4343,13 +4343,19 @@ struct ClaudeCodeVersionInfo {
     autoupdater_disabled: bool,
 }
 
+/// Run a command in user's interactive login shell (to get proper PATH with nvm, etc.)
+fn run_shell_command(cmd: &str) -> std::io::Result<std::process::Output> {
+    // Use user's default shell from $SHELL, fallback to /bin/zsh (macOS default)
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+    std::process::Command::new(&shell)
+        .args(["-ilc", cmd]) // -i for interactive (loads .zshrc), -l for login, -c for command
+        .output()
+}
+
 /// Detect Claude Code installation type
 fn detect_claude_code_install_type() -> (ClaudeCodeInstallType, Option<String>) {
     // Try running `claude --version` first (works for both Native and NPM)
-    if let Ok(output) = std::process::Command::new("/bin/sh")
-        .args(["-lc", "claude --version 2>/dev/null"])
-        .output()
-    {
+    if let Ok(output) = run_shell_command("claude --version 2>/dev/null") {
         if output.status.success() {
             let version_str = String::from_utf8_lossy(&output.stdout);
             // Parse version from output like "2.0.76 (Claude Code)" - take first token
@@ -4369,10 +4375,7 @@ fn detect_claude_code_install_type() -> (ClaudeCodeInstallType, Option<String>) 
             }
 
             // Check if it's NPM install
-            if let Ok(npm_output) = std::process::Command::new("/bin/sh")
-                .args(["-lc", "npm list -g @anthropic-ai/claude-code --depth=0 2>/dev/null"])
-                .output()
-            {
+            if let Ok(npm_output) = run_shell_command("npm list -g @anthropic-ai/claude-code --depth=0 2>/dev/null") {
                 if npm_output.status.success() {
                     let stdout = String::from_utf8_lossy(&npm_output.stdout);
                     if stdout.contains("@anthropic-ai/claude-code") {
@@ -4500,9 +4503,10 @@ async fn install_claude_code_version(version: String, install_type: Option<Strin
             format!("curl -fsSL https://claude.ai/install.sh | bash -s {}", version_arg)
         };
 
-        // Use login shell to get proper PATH (GUI apps don't inherit terminal PATH)
-        let output = std::process::Command::new("/bin/sh")
-            .args(["-lc", &cmd])
+        // Use user's interactive login shell to get proper PATH (nvm, etc.)
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+        let output = std::process::Command::new(&shell)
+            .args(["-ilc", &cmd])
             .output()
             .map_err(|e| format!("Failed to run install command: {}", e))?;
 
